@@ -1,5 +1,6 @@
 import {
 	getCurrentBlock,
+	getCategories,
 	getGlobalStats,
 	getInsiderAlerts,
 	getInsiderStats,
@@ -73,6 +74,30 @@ export function createServer() {
 			};
 		}
 	>();
+	const getCachedMarketsPayload = async (
+		page: number,
+		limit: number,
+		closed: boolean | undefined,
+		cacheNamespace: "markets" | "top-liquidity",
+	) => {
+		const cacheKey = `${cacheNamespace}:${page}-${limit}-${closed ?? "all"}`;
+		const cached = marketsCache.get(cacheKey);
+		if (cached && cached.expiresAt > Date.now()) {
+			return cached.payload;
+		}
+
+		const offset = toOffset(page, limit);
+		const { markets, total } = await getMarkets(limit, offset, closed);
+		const pagination = makePagination(page, limit, total);
+		const payload = { data: markets, pagination };
+
+		marketsCache.set(cacheKey, {
+			expiresAt: Date.now() + MARKETS_CACHE_TTL_MS,
+			payload,
+		});
+
+		return payload;
+	};
 
 	const server = Bun.serve({
 		hostname: host,
@@ -103,7 +128,17 @@ export function createServer() {
 				return json(stats);
 			}
 
-			if (url.pathname === "/api/markets") {
+			if (url.pathname === "/categories" || url.pathname === "/api/categories") {
+				const categories = await getCategories();
+				return json(categories);
+			}
+
+			if (
+				url.pathname === "/api/markets" ||
+				url.pathname === "/markets" ||
+				url.pathname === "/api/top-liquidity-markets" ||
+				url.pathname === "/top-liquidity-markets"
+			) {
 				const page = parsePositiveInt(
 					url.searchParams.get("page"),
 					DEFAULT_PAGE,
@@ -113,22 +148,17 @@ export function createServer() {
 					MAX_LIMIT,
 				);
 				const closed = parseOptionalBoolean(url.searchParams.get("close"));
-				const offset = toOffset(page, limit);
-
-				const cacheKey = `${page}-${limit}-${closed ?? "all"}`;
-				const cached = marketsCache.get(cacheKey);
-				if (cached && cached.expiresAt > Date.now()) {
-					return json(cached.payload);
-				}
-
-				const { markets, total } = await getMarkets(limit, offset, closed);
-				const pagination = makePagination(page, limit, total);
-				const payload = { data: markets, pagination };
-
-				marketsCache.set(cacheKey, {
-					expiresAt: Date.now() + MARKETS_CACHE_TTL_MS,
-					payload,
-				});
+				const cacheNamespace =
+					url.pathname === "/api/top-liquidity-markets" ||
+					url.pathname === "/top-liquidity-markets"
+						? "top-liquidity"
+						: "markets";
+				const payload = await getCachedMarketsPayload(
+					page,
+					limit,
+					closed,
+					cacheNamespace,
+				);
 
 				return json(payload);
 			}

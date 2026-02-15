@@ -134,6 +134,15 @@ export async function fetchGlobalStats(): Promise<GlobalStats> {
 	}
 }
 
+export async function fetchCategories(): Promise<string[]> {
+	try {
+		const payload = await getJson<string[]>("/api/categories");
+		return Array.isArray(payload) ? payload : ["ALL"];
+	} catch {
+		return ["ALL"];
+	}
+}
+
 export async function fetchAlerts(
 	page = 1,
 	limit = 10,
@@ -201,6 +210,38 @@ export async function fetchMarkets(
 		data: Array.isArray(structured.data) ? structured.data : [],
 		pagination: normalizePagination(structured.pagination),
 	};
+}
+
+export async function fetchTopLiquidityMarkets(
+	page = 1,
+	limit = 10,
+	close?: boolean,
+): Promise<MarketsResponse> {
+	try {
+		const payload = await getJson<unknown>("/api/top-liquidity-markets", {
+			page,
+			limit,
+			close,
+		});
+
+		if (Array.isArray(payload)) {
+			return {
+				data: payload,
+				pagination: {
+					...DEFAULT_PAGINATION,
+					total: payload.length,
+				},
+			} as MarketsResponse;
+		}
+
+		const structured = payload as Partial<MarketsResponse>;
+		return {
+			data: Array.isArray(structured.data) ? structured.data : [],
+			pagination: normalizePagination(structured.pagination),
+		};
+	} catch {
+		return fetchMarkets(page, limit, close);
+	}
 }
 
 export async function fetchMarket(

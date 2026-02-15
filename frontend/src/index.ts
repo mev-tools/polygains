@@ -107,6 +107,13 @@ const server = serve({
 			proxyRequest(req, ["/global-stats", "/api/global-stats"]),
 		"/api/alerts": (req) => proxyRequest(req, ["/alerts", "/api/alerts"]),
 		"/api/markets": (req) => proxyRequest(req, ["/api/markets", "/markets"]),
+		"/api/top-liquidity-markets": (req) =>
+			proxyRequest(req, [
+				"/api/top-liquidity-markets",
+				"/top-liquidity-markets",
+				"/api/markets",
+				"/markets",
+			]),
 		"/api/market/:conditionId": (req) => {
 			const conditionId = encodeURIComponent(req.params.conditionId);
 			return proxyRequest(req, [

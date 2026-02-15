@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { formatPnL } from "../../lib/backtest";
 import type { AlertRowView } from "../../types/api";
 import type { GroupedMarket, Pagination } from "../../types/terminal";
 
@@ -17,11 +18,14 @@ interface LiveTrackerControlsProps {
 	maxPrice: number;
 	onlyBetOnce: boolean;
 	betOneDollarPerTrade: boolean;
+	disabled?: boolean;
+	soundEnabled: boolean;
 	selectedStrategies: Array<"reverse_insider" | "follow_insider">;
 	onMinPriceChange: (value: number) => void;
 	onMaxPriceChange: (value: number) => void;
 	onOnlyBetOnceChange: (value: boolean) => void;
 	onBetOneDollarPerTradeChange: (value: boolean) => void;
+	onSoundToggle: (value: boolean) => void;
 	onStrategyChange: (
 		mode: "reverse_insider" | "follow_insider",
 		enabled: boolean,
@@ -106,10 +110,6 @@ const BANNER_ASCII = `
 ██║     ╚██████╔╝███████╗██║   ╚██████╔╝██║  ██║ ██║██║ ╚████║███████║
 ╚═╝      ╚═════╝ ╚══════╝╚═╝    ╚═════╝ ╚═╝  ╚═╝ ╚═╝╚═╝  ╚═══╝╚══════╝`;
 
-function formatCurrency(value: number): string {
-	return `${value >= 0 ? "+" : ""}$${value.toFixed(2)} `;
-}
-
 function formatLargeNumber(value: number): string {
 	return value.toLocaleString(undefined, {
 		minimumFractionDigits: 2,
@@ -128,7 +128,8 @@ export function TerminalHeader({
 			<div className="header-meta">
 				<div className="timestamp">BLOCK: {currentBlock}</div>
 				<div
-					className={`badge badge - outline badge - sm font - mono ${syncHealthy ? "badge-success" : "badge-error"} `}
+					className={syncHealthy ? "accent" : "danger"}
+					style={{ fontSize: "0.7rem", fontWeight: "bold" }}
 				>
 					{syncLabel}
 				</div>
@@ -140,12 +141,12 @@ export function TerminalHeader({
 export function TerminalIntro({ text }: TerminalIntroProps) {
 	return (
 		<div className="terminal-row">
-			<div className="terminal-header">
+			{/* <div className="terminal-header">
 				<pre className="logo-ascii">{BANNER_ASCII}</pre>
 				<span>
 					STATUS: <span className="terminal-accent">ONLINE</span>
 				</span>
-			</div>
+			</div> */}
 			<div className="terminal-content">
 				<div className="terminal-section">
 					<h3>
@@ -166,11 +167,14 @@ export function LiveTrackerControls({
 	maxPrice,
 	onlyBetOnce,
 	betOneDollarPerTrade,
+	disabled = false,
+	soundEnabled,
 	selectedStrategies,
 	onMinPriceChange,
 	onMaxPriceChange,
 	onOnlyBetOnceChange,
 	onBetOneDollarPerTradeChange,
+	onSoundToggle,
 	onStrategyChange,
 }: LiveTrackerControlsProps) {
 	const [minDraft, setMinDraft] = useState(minPrice.toFixed(2));
@@ -205,6 +209,7 @@ export function LiveTrackerControls({
 				<input
 					type="text"
 					inputMode="decimal"
+					disabled={disabled}
 					value={minDraft}
 					placeholder="Min P"
 					className="input input-bordered input-xs filter-input"
@@ -220,6 +225,7 @@ export function LiveTrackerControls({
 				<input
 					type="text"
 					inputMode="decimal"
+					disabled={disabled}
 					value={maxDraft}
 					placeholder="Max P"
 					className="input input-bordered input-xs filter-input"
@@ -236,6 +242,7 @@ export function LiveTrackerControls({
 					<input
 						className="checkbox checkbox-xs checkbox-primary"
 						type="checkbox"
+						disabled={disabled}
 						checked={onlyBetOnce}
 						onChange={(event) =>
 							onOnlyBetOnceChange(event.currentTarget.checked)
@@ -247,17 +254,28 @@ export function LiveTrackerControls({
 					<input
 						className="checkbox checkbox-xs checkbox-accent"
 						type="checkbox"
+						disabled={disabled}
 						checked={betOneDollarPerTrade}
 						onChange={(event) =>
 							onBetOneDollarPerTradeChange(event.currentTarget.checked)
 						}
 					/>
-					$1/Trade
+					Fixed $10 Stake
 				</label>
+				<button
+					type="button"
+					disabled={disabled}
+					className={`btn btn-xs ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
+					onClick={() => onSoundToggle(!soundEnabled)}
+					title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
+				>
+					{soundEnabled ? "🔊" : "🔇"}
+				</button>
 				<label className="filter-checkbox">
 					<input
 						className="checkbox checkbox-xs checkbox-success"
 						type="checkbox"
+						disabled={disabled}
 						checked={selectedStrategies.includes("follow_insider")}
 						onChange={(event) =>
 							onStrategyChange("follow_insider", event.currentTarget.checked)
@@ -269,6 +287,7 @@ export function LiveTrackerControls({
 					<input
 						className="checkbox checkbox-xs checkbox-error"
 						type="checkbox"
+						disabled={disabled}
 						checked={selectedStrategies.includes("reverse_insider")}
 						onChange={(event) =>
 							onStrategyChange("reverse_insider", event.currentTarget.checked)
@@ -306,7 +325,7 @@ export function LiveTrackerCards({
 				<div
 					className={`stat ${realizedPnL > 0 ? "accent" : realizedPnL < 0 ? "danger" : ""} `}
 				>
-					{formatCurrency(realizedPnL)}
+					{formatPnL(realizedPnL)}
 				</div>
 
 				<button
@@ -595,6 +614,7 @@ export function MarketsSection({
 											<tr>
 												<th>Outcome</th>
 												<th>Trades</th>
+												<th>Insider Trades</th>
 												<th>Volume</th>
 												<th>Current Odds</th>
 												<th>
@@ -619,6 +639,9 @@ export function MarketsSection({
 													marketStatsLoadingByCondition[market.conditionId],
 												);
 												const totalTrades = Number(outcome.total_trades || 0);
+												const insiderTradeCount = Number(
+													outcome.insider_trade_count || 0,
+												);
 												const noTradeData = totalTrades <= 0;
 												const missingStats = !hasAllStats(outcome);
 												return (
@@ -637,6 +660,9 @@ export function MarketsSection({
 														</td>
 														<td className="val">
 															{totalTrades.toLocaleString()}
+														</td>
+														<td className="val">
+															{insiderTradeCount.toLocaleString()}
 														</td>
 														<td className="val">
 															$

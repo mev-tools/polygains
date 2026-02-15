@@ -240,6 +240,7 @@ export async function getInsiderAlerts(
 			winner: vInsidersEnriched.winner,
 			closed: vInsidersEnriched.closed,
 			conditionId: vInsidersEnriched.conditionId,
+			question: vInsidersEnriched.question,
 			tokenId: vInsidersEnriched.tokenId,
 			alertPrice: vInsidersEnriched.alertPrice,
 			lastPrice: vInsidersEnriched.lastPrice,
@@ -284,6 +285,7 @@ export async function getInsiderAlerts(
 		winner: inferResolvedWinner(insider.resolvedWinner, insider.lastPrice),
 		closed: insider.closed,
 		conditionId: insider.conditionId,
+		question: insider.question,
 		tokenId: insider.tokenId,
 		market_price: Number(insider.lastPrice || 0),
 		walletAddress: insider.walletAddress || undefined,
@@ -294,10 +296,23 @@ export async function getInsiderAlerts(
 }
 
 export async function getInsiderTrades(address: string) {
-	const accountHash = Number.parseInt(address, 10);
-	if (!Number.isFinite(accountHash)) {
-		return [];
+	let accountHash = parseInt32HashLookup(address);
+	if (accountHash === null) {
+		const walletAddress = normalizeWalletAddress(address);
+		if (!walletAddress) {
+			return [];
+		}
+
+		const accountMapping = await db
+			.select({
+				accountHash: accountWalletMap.accountHash,
+			})
+			.from(accountWalletMap)
+			.where(sql`lower(${accountWalletMap.walletAddress}) = ${walletAddress}`)
+			.limit(1);
+		accountHash = Number(accountMapping[0]?.accountHash);
 	}
+	if (accountHash === null || !Number.isFinite(accountHash)) return [];
 
 	const insiders = await db
 		.select({
@@ -440,11 +455,37 @@ export async function getMarkets(
 		.from(vMarketSummary)
 		.where(allOutcomesFilter);
 
+	const tokenIds = Array.from(
+		new Set(
+			allOutcomes
+				.map((outcome) => outcome.tokenId)
+				.filter((id): id is string => id !== null),
+		),
+	);
+	const insiderTradeCounts = tokenIds.length
+		? await db
+				.select({
+					tokenId: insiderPositions.tokenId,
+					insiderTradeCount:
+						sql<number>`CAST(coalesce(sum(${insiderPositions.tradeCount}), 0) AS DOUBLE PRECISION)`,
+				})
+				.from(insiderPositions)
+				.where(inArray(insiderPositions.tokenId, tokenIds))
+				.groupBy(insiderPositions.tokenId)
+		: [];
+	const insiderTradeCountByToken = new Map(
+		insiderTradeCounts.map((entry) => [
+			String(entry.tokenId),
+			Number(entry.insiderTradeCount || 0),
+		]),
+	);
+
 	// Flatten and enrich with market-level totals
 	const markets = allOutcomes.map((outcome) => {
 		const marketTotal = marketVolumes.find(
 			(mv) => mv.conditionId === outcome.conditionId,
 		);
+		const tokenIdKey = outcome.tokenId !== null ? String(outcome.tokenId) : "";
 		return {
 			conditionId: outcome.conditionId,
 			question: outcome.question || outcome.conditionId,
@@ -457,6 +498,7 @@ export async function getMarkets(
 			total_market_vol: Number(marketTotal?.totalMarketVol || 0),
 			total_market_trades: Number(marketTotal?.totalMarketTrades || 0),
 			hn_score: Number(marketTotal?.hnScore || 0),
+			insider_trade_count: insiderTradeCountByToken.get(tokenIdKey) ?? 0,
 			mean: outcome.mean !== null ? Number(outcome.mean) : null,
 			stdDev: outcome.stdDev !== null ? Number(outcome.stdDev) : null,
 			p95: parsePositiveStatOrNull(outcome.p95),
@@ -548,4 +590,31 @@ export async function getGlobalStats() {
 		total_trades,
 		active_positions,
 	};
+}
+
+export async function getCategories() {
+	const result = await db
+		.selectDistinct({ tags: marketsTable.outcomeTags })
+		.from(marketsTable)
+		.where(isNotNull(marketsTable.outcomeTags));
+
+	const categories = new Set<string>();
+	categories.add("ALL");
+
+	for (const row of result) {
+		if (!row.tags) continue;
+		const tags = row.tags.split(",");
+		for (const tag of tags) {
+			const cleanTag = tag.trim().toUpperCase();
+			if (cleanTag && cleanTag !== "ALL") {
+				categories.add(cleanTag);
+			}
+		}
+	}
+
+	return Array.from(categories).sort((a, b) => {
+		if (a === "ALL") return -1;
+		if (b === "ALL") return 1;
+		return a.localeCompare(b);
+	});
 }

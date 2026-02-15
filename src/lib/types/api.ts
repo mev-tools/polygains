@@ -32,6 +32,7 @@ export interface AlertItem {
 	winner: boolean | null;
 	closed: boolean | null;
 	conditionId: string | null;
+	question: string | null;
 	tokenId: string | null;
 	market_price: number;
 	walletAddress?: string;
@@ -64,6 +65,7 @@ export interface MarketOutcome {
 	total_market_vol: number;
 	total_market_trades: number;
 	hn_score: number;
+	insider_trade_count: number;
 	mean: number | null;
 	stdDev: number | null;
 	p95: number | null;

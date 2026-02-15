@@ -727,13 +727,11 @@ tr:hover td {
 	content: "";
 	position: absolute;
 	inset: 0;
-	background: repeating-linear-gradient(
-		0deg,
-		rgba(0, 0, 0, 0.15) 0px,
-		rgba(0, 0, 0, 0.15) 1px,
-		transparent 1px,
-		transparent 3px
-	);
+	background: repeating-linear-gradient(0deg,
+			rgba(0, 0, 0, 0.15) 0px,
+			rgba(0, 0, 0, 0.15) 1px,
+			transparent 1px,
+			transparent 3px);
 	pointer-events: none;
 	z-index: 10;
 }
@@ -744,12 +742,10 @@ tr:hover td {
 	left: 0;
 	right: 0;
 	height: 2px;
-	background: linear-gradient(
-		90deg,
-		transparent 0%,
-		rgba(16, 185, 129, 0.7) 50%,
-		transparent 100%
-	);
+	background: linear-gradient(90deg,
+			transparent 0%,
+			rgba(16, 185, 129, 0.7) 50%,
+			transparent 100%);
 	box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
 	animation: scan 4s ease-in-out infinite;
 	pointer-events: none;
@@ -818,27 +814,9 @@ tr:hover td {
 	align-items: center;
 	gap: 0.65rem;
 	pointer-events: none;
-	border-radius: 999px;
-	border: 1px solid;
-	padding: 0.6rem 1.1rem;
 	font-weight: 800;
 	letter-spacing: 0.2px;
-	backdrop-filter: blur(6px);
-	-webkit-backdrop-filter: blur(6px);
 	animation: twitchAlertCard 2.5s cubic-bezier(0.2, 0.95, 0.2, 1) forwards;
-}
-
-.floating-cash-tag {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 48px;
-	height: 24px;
-	border-radius: 999px;
-	font-size: 0.68rem;
-	letter-spacing: 0.8px;
-	text-transform: uppercase;
-	font-weight: 900;
 }
 
 .floating-cash-value {
@@ -849,38 +827,10 @@ tr:hover td {
 
 .floating-cash.win {
 	color: #bbf7d0;
-	border-color: rgba(34, 197, 94, 0.55);
-	background: linear-gradient(
-		125deg,
-		rgba(5, 18, 10, 0.88),
-		rgba(11, 36, 19, 0.78)
-	);
-	box-shadow:
-		0 16px 44px rgba(13, 102, 47, 0.48),
-		inset 0 0 0 1px rgba(74, 222, 128, 0.16);
-}
-
-.floating-cash.win .floating-cash-tag {
-	color: #052e16;
-	background: linear-gradient(180deg, #86efac, #4ade80);
 }
 
 .floating-cash.loss {
 	color: #fecaca;
-	border-color: rgba(248, 113, 113, 0.55);
-	background: linear-gradient(
-		125deg,
-		rgba(33, 9, 9, 0.9),
-		rgba(53, 11, 11, 0.78)
-	);
-	box-shadow:
-		0 16px 44px rgba(122, 22, 22, 0.5),
-		inset 0 0 0 1px rgba(252, 165, 165, 0.16);
-}
-
-.floating-cash.loss .floating-cash-tag {
-	color: #450a0a;
-	background: linear-gradient(180deg, #fca5a5, #f87171);
 }
 
 @keyframes twitchAlertCard {
@@ -942,6 +892,7 @@ tr:hover td {
 }
 
 @keyframes breath {
+
 	0%,
 	100% {
 		opacity: 1;
@@ -953,6 +904,7 @@ tr:hover td {
 }
 
 @keyframes pulse {
+
 	0%,
 	100% {
 		opacity: 1;
@@ -964,6 +916,7 @@ tr:hover td {
 }
 
 @keyframes scan {
+
 	0%,
 	100% {
 		top: 0;
@@ -989,6 +942,7 @@ tr:hover td {
 }
 
 @keyframes blink {
+
 	0%,
 	50% {
 		opacity: 1;

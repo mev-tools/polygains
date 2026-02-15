@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	fetchAlerts,
+	fetchCategories,
 	fetchGlobalStats,
 	fetchHealth,
 	fetchInsiderStats,
 	fetchInsiderTrades,
 	fetchMarket,
-	fetchMarkets,
+	fetchTopLiquidityMarkets,
 } from "../api/terminalApi";
 import {
 	type AlertRowView,
@@ -20,6 +21,22 @@ import {
 	TerminalHeader,
 	TerminalIntro,
 } from "../components/terminal/TerminalSections";
+import {
+	calculateTradeCost,
+	calculateWinProfit,
+	categoryMatches,
+	createAlertKey,
+	getEntryPrice,
+	inferInsiderWin,
+	isPriceInRange,
+	normalizeCategory,
+	normalizePriceRange,
+	parseWinnerValue,
+	resolveClosedAlertWinner,
+	alertMatchesFilters as sharedAlertMatchesFilters,
+	sortStrategies,
+	winnerFilterMatches,
+} from "../lib/backtest";
 import type {
 	AlertItem,
 	BetSizing,
@@ -38,17 +55,16 @@ import { EMPTY_PAGINATION } from "../types/terminal";
 
 const TYPEWRITER_TEXT =
 	"MEV.tools built this Polymarket terminal to flag potential insider-style flow: new wallets placing oversized, high-conviction bets on low-odds outcomes before repricing. Built for X traders tracking suspicious order flow in real time.";
-const TARGET_PAYOUT = 10;
-const FIXED_STAKE_USD = 1;
 const ALERTS_PAGE_SIZE = 10;
 const MAX_ALERT_FILL_PAGES = 10;
 const MARKETS_DISPLAY_LIMIT = 5;
 const MARKETS_PAGE_SIZE = 5;
 const BACKTEST_PAGE_SIZE = 50;
 const BACKTEST_PAUSE_TRADE_COUNT = 500;
-const BACKTEST_PAGE_DELAY_MS = 200;
+const BACKTEST_PAGE_DELAY_MS = 0;
+const BACKTEST_RESOLUTION_CHECK_EVERY_PAGES = 5;
 
-const STRATEGY_ORDER: StrategyMode[] = ["follow_insider", "reverse_insider"];
+const _STRATEGY_ORDER: StrategyMode[] = ["follow_insider", "reverse_insider"];
 const DEFAULT_CATEGORY_OPTIONS = [
 	"ALL",
 	"CRYPTO",
@@ -77,73 +93,6 @@ function formatNum(value: number | string | undefined | null): string {
 	});
 }
 
-function normalizePrice(
-	rawPrice: number | string | undefined | null,
-	fallback = 0.5,
-): number {
-	const value = Number(rawPrice);
-	if (!Number.isFinite(value)) return fallback;
-	return Math.max(0, Math.min(1, value));
-}
-
-function clampPrice(rawValue: number, fallback: number): number {
-	if (!Number.isFinite(rawValue)) return fallback;
-	return Math.max(0, Math.min(1, rawValue));
-}
-
-function getEntryPrice(
-	rawPrice: number | string | undefined | null,
-	mode: StrategyMode,
-): number {
-	const insiderPrice = normalizePrice(rawPrice, 0.5);
-	return mode === "reverse_insider" ? 1 - insiderPrice : insiderPrice;
-}
-
-function calculateTradeCost(entryPrice: number, betSizing: BetSizing): number {
-	if (betSizing === "fixed_stake") {
-		return FIXED_STAKE_USD;
-	}
-	return TARGET_PAYOUT * entryPrice;
-}
-
-function calculateWinProfit(
-	cost: number,
-	entryPrice: number,
-	betSizing: BetSizing,
-): number {
-	if (betSizing === "fixed_stake") {
-		const safeEntry = Math.max(entryPrice, 0.0001);
-		return cost / safeEntry - cost;
-	}
-	return TARGET_PAYOUT - cost;
-}
-
-function isPriceInRange(
-	price: number,
-	minPrice: number,
-	maxPrice: number,
-): boolean {
-	return price >= minPrice && price <= maxPrice;
-}
-
-function normalizeCategory(category: string | null | undefined): string {
-	const normalized = String(category ?? "").trim();
-	if (!normalized) return "ALL";
-	if (normalized.toUpperCase() === "ALL") return "ALL";
-	return normalized.toUpperCase();
-}
-
-function categoryMatches(alert: AlertItem, selectedCategory: string): boolean {
-	if (selectedCategory === "ALL") return true;
-	const alertCategory = normalizeCategory(alert.category);
-	return alertCategory.toLowerCase() === selectedCategory.toLowerCase();
-}
-
-function sortStrategies(modes: StrategyMode[]): StrategyMode[] {
-	const unique = Array.from(new Set(modes));
-	return STRATEGY_ORDER.filter((mode) => unique.includes(mode));
-}
-
 function alertMatchesFilters(
 	alert: AlertItem,
 	modes: StrategyMode[],
@@ -152,16 +101,14 @@ function alertMatchesFilters(
 	selectedCategory = "ALL",
 	winnerFilter: WinnerFilter = "BOTH",
 ): boolean {
-	if (!categoryMatches(alert, selectedCategory)) {
-		return false;
-	}
-	if (!winnerFilterMatches(alert, winnerFilter)) {
-		return false;
-	}
-
-	return modes.some((mode) => {
-		const entryPrice = getEntryPrice(alert.price, mode);
-		return isPriceInRange(entryPrice, minPrice, maxPrice);
+	return sharedAlertMatchesFilters(alert, {
+		strategies: modes,
+		minPrice,
+		maxPrice,
+		category: selectedCategory,
+		winnerFilter,
+		onlyBetOnce: false, // Not used by alertMatchesFilters itself
+		betSizing: "target_payout", // Not used by alertMatchesFilters itself
 	});
 }
 
@@ -207,10 +154,6 @@ function isResolvedMarket(market: GroupedMarket): boolean {
 	return market.outcomes.every((outcome) => Boolean(outcome.closed));
 }
 
-function createAlertKey(alert: AlertItem): string {
-	return `${alert.user}-${alert.alert_time}-${String(alert.outcome)}-${alert.conditionId ?? ""}-${alert.tokenId ?? ""}`;
-}
-
 function createRowId(alert: AlertItem): string {
 	return `alert-${createAlertKey(alert)}`;
 }
@@ -221,19 +164,6 @@ function toBoolean(value: unknown): boolean {
 	if (typeof value === "string")
 		return value.toLowerCase() === "true" || value === "1";
 	return false;
-}
-
-function parseWinnerValue(value: unknown): boolean | null {
-	if (typeof value === "boolean") return value;
-	if (typeof value === "number") return value !== 0;
-	if (typeof value === "string") {
-		const normalized = value.trim().toLowerCase();
-		if (normalized === "true" || normalized === "1" || normalized === "yes")
-			return true;
-		if (normalized === "false" || normalized === "0" || normalized === "no")
-			return false;
-	}
-	return null;
 }
 
 function toNumberOrNull(value: unknown): number | null {
@@ -250,38 +180,6 @@ function toPositiveNumberOrNull(value: unknown): number | null {
 		return null;
 	}
 	return parsed;
-}
-
-function inferInsiderWin(
-	rawWinner: unknown,
-	rawLastPrice: unknown,
-): boolean | null {
-	const parsedWinner = parseWinnerValue(rawWinner);
-	if (parsedWinner !== null) {
-		return parsedWinner;
-	}
-
-	const lastPrice = Number(rawLastPrice);
-	if (Number.isFinite(lastPrice)) {
-		if (lastPrice >= 0.98) return true;
-		if (lastPrice <= 0.05) return false;
-	}
-
-	return null;
-}
-
-function winnerFilterMatches(
-	alert: AlertItem,
-	winnerFilter: WinnerFilter,
-): boolean {
-	if (winnerFilter === "BOTH") return true;
-	const insiderWon = inferInsiderWin(
-		alert.winner,
-		alert.market_price ?? alert.price,
-	);
-	if (winnerFilter === "WINNERS") return insiderWon === true;
-	if (winnerFilter === "LOSERS") return insiderWon === false;
-	return true;
 }
 
 export function TerminalPage() {
@@ -312,6 +210,7 @@ export function TerminalPage() {
 	const [onlyBetOnce, setOnlyBetOnce] = useState(false);
 	const [selectedBetSizing, setSelectedBetSizing] =
 		useState<BetSizing>("target_payout");
+	const [soundEnabled, setSoundEnabled] = useState(false);
 	const [selectedCategory, setSelectedCategory] = useState("ALL");
 	const [selectedWinnerFilter, setSelectedWinnerFilter] =
 		useState<WinnerFilter>("BOTH");
@@ -338,10 +237,24 @@ export function TerminalPage() {
 	const audioCtxRef = useRef<AudioContext | null>(null);
 	const cashQueueRef = useRef<Array<{ text: string; isLoss: boolean }>>([]);
 	const isAnimatingCashRef = useRef(false);
+	const burstStartTimeRef = useRef<number>(0);
+	const lastSoundTimeRef = useRef<number>(0);
+	const soundCountRef = useRef<number>(0);
+	const soundBurstStartRef = useRef<number>(0);
 	const marketStatsRequestedRef = useRef(new Set<string>());
 	const marketStatsInFlightRef = useRef(new Set<string>());
 	const backtestNextPageRef = useRef(1);
 	const backtestHasNextRef = useRef(false);
+	const backtestRunLockRef = useRef(false);
+	const alertsRequestSeqRef = useRef(0);
+	const refreshInFlightRef = useRef(false);
+	const pendingResolutionInFlightRef = useRef(false);
+	const isMountedRef = useRef(true);
+	const liveRecalcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+	const lastLiveRecalcSignatureRef = useRef("");
+	const pnlComputationModeRef = useRef<"live" | "backtest">("live");
 
 	const groupedMarkets = useMemo<GroupedMarket[]>(() => {
 		const grouped = new Map<string, GroupedMarket>();
@@ -370,40 +283,51 @@ export function TerminalPage() {
 
 		return Array.from(grouped.values())
 			.filter((market) => !isResolvedMarket(market))
-			.sort((a, b) => b.totalMarketVol - a.totalMarketVol)
+			.sort((a, b) => {
+				const byActivity = b.hnScore - a.hnScore;
+				if (byActivity !== 0) return byActivity;
+
+				const byTrades = b.totalMarketTrades - a.totalMarketTrades;
+				if (byTrades !== 0) return byTrades;
+
+				return b.totalMarketVol - a.totalMarketVol;
+			})
 			.slice(0, MARKETS_DISPLAY_LIMIT);
 	}, [marketsRaw]);
 
-	const categoryOptions = useMemo<string[]>(() => {
-		const values = new Set<string>(DEFAULT_CATEGORY_OPTIONS);
-		for (const alert of alerts) {
-			const category = normalizeCategory(alert.category);
-			if (category !== "ALL") {
-				values.add(category);
+	const [categoryOptions, setCategoryOptions] = useState<string[]>(
+		Array.from(DEFAULT_CATEGORY_OPTIONS),
+	);
+
+	useEffect(() => {
+		void fetchCategories().then((cats) => {
+			// Merge with defaults to ensure basic structure
+			const unique = new Set([...DEFAULT_CATEGORY_OPTIONS, ...cats]);
+			// Ensure selected category is present
+			if (selectedCategory && selectedCategory !== "ALL") {
+				unique.add(selectedCategory);
 			}
-		}
-		const selected = normalizeCategory(selectedCategory);
-		if (selected !== "ALL") {
-			values.add(selected);
-		}
 
-		const preferredOrder = new Map<string, number>();
-		for (const [i, category] of DEFAULT_CATEGORY_OPTIONS.entries()) {
-			preferredOrder.set(category, i);
-		}
+			const sorted = Array.from(unique).sort((a, b) => {
+				// ALL always first
+				if (a === "ALL") return -1;
+				if (b === "ALL") return 1;
 
-		return Array.from(values.values()).sort((a, b) => {
-			const aPreferred = preferredOrder.get(a);
-			const bPreferred = preferredOrder.get(b);
+				// Then follow default order for core categories
+				const idxA = (DEFAULT_CATEGORY_OPTIONS as readonly string[]).indexOf(a);
+				const idxB = (DEFAULT_CATEGORY_OPTIONS as readonly string[]).indexOf(b);
 
-			if (aPreferred !== undefined && bPreferred !== undefined) {
-				return aPreferred - bPreferred;
-			}
-			if (aPreferred !== undefined) return -1;
-			if (bPreferred !== undefined) return 1;
-			return a.localeCompare(b);
+				if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+				if (idxA !== -1) return -1;
+				if (idxB !== -1) return 1;
+
+				// Alphabetical for the rest
+				return a.localeCompare(b);
+			});
+
+			setCategoryOptions(sorted);
 		});
-	}, [alerts, selectedCategory]);
+	}, [selectedCategory]);
 
 	const filteredAlerts = useMemo<AlertItem[]>(() => {
 		if (selectedStrategies.length === 0) return [];
@@ -499,8 +423,33 @@ export function TerminalPage() {
 		setTracker({ ...trackerRef.current });
 	};
 
+	const resetBacktestProgress = () => {
+		backtestHasNextRef.current = false;
+		backtestNextPageRef.current = 1;
+		setBacktestCanContinue(false);
+	};
+
+	const switchToLiveComputation = () => {
+		pnlComputationModeRef.current = "live";
+		lastLiveRecalcSignatureRef.current = "";
+	};
+
 	const processCashQueue = () => {
-		if (isAnimatingCashRef.current || cashQueueRef.current.length === 0) return;
+		if (isAnimatingCashRef.current || cashQueueRef.current.length === 0) {
+			if (cashQueueRef.current.length === 0) {
+				burstStartTimeRef.current = 0;
+			}
+			return;
+		}
+
+		if (burstStartTimeRef.current === 0) {
+			burstStartTimeRef.current = Date.now();
+		} else if (Date.now() - burstStartTimeRef.current > 3000) {
+			cashQueueRef.current = [];
+			isAnimatingCashRef.current = false;
+			burstStartTimeRef.current = 0;
+			return;
+		}
 
 		isAnimatingCashRef.current = true;
 		const nextItem = cashQueueRef.current.shift();
@@ -528,15 +477,40 @@ export function TerminalPage() {
 		setTimeout(() => {
 			isAnimatingCashRef.current = false;
 			processCashQueue();
-		}, 300);
+		}, 250);
 	};
 
-	const showFloatingCash = (text: string, isLoss = false) => {
+	const _showFloatingCash = (text: string, isLoss = false) => {
 		cashQueueRef.current.push({ text, isLoss });
 		processCashQueue();
 	};
 
-	const playCashSound = () => {
+	const _playCashSound = () => {
+		if (!soundEnabled) return;
+		const now = Date.now();
+
+		// Reset burst/count if idle for more than 5 seconds
+		if (now - lastSoundTimeRef.current > 5000) {
+			soundBurstStartRef.current = 0;
+			soundCountRef.current = 0;
+		}
+
+		// Burst limit: max 6 seconds of sound
+		if (soundBurstStartRef.current === 0) {
+			soundBurstStartRef.current = now;
+		} else if (now - soundBurstStartRef.current > 6000) {
+			return;
+		}
+
+		// Throttle: max 2 times per 3 seconds
+		if (now - lastSoundTimeRef.current > 3000) {
+			soundCountRef.current = 1;
+			lastSoundTimeRef.current = now;
+		} else {
+			if (soundCountRef.current >= 2) return;
+			soundCountRef.current++;
+		}
+
 		const audioCtor =
 			window.AudioContext ||
 			(
@@ -564,7 +538,7 @@ export function TerminalPage() {
 		osc1.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
 
 		gain1.gain.setValueAtTime(0, ctx.currentTime);
-		gain1.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+		gain1.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.05);
 		gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
 
 		osc1.start(ctx.currentTime);
@@ -582,7 +556,7 @@ export function TerminalPage() {
 			osc2.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.1);
 
 			gain2.gain.setValueAtTime(0, ctx.currentTime);
-			gain2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+			gain2.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.05);
 			gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
 
 			osc2.start(ctx.currentTime);
@@ -605,25 +579,30 @@ export function TerminalPage() {
 		_silent: boolean,
 		mode: StrategyMode,
 		betSizing: BetSizing,
-	) => {
+	): boolean => {
+		if (insiderWon === null || insiderWon === undefined) {
+			return false;
+		}
+
 		const strategyWon = didStrategyWin(insiderWon, mode);
 
 		if (strategyWon) {
 			const profit = calculateWinProfit(cost, entryPrice, betSizing);
 			trackerRef.current.realizedPnL += profit;
 			trackerRef.current.liveWins += 1;
-			if (!backtestRunning) {
-				playCashSound();
-				showFloatingCash(`+$${profit.toFixed(2)}`);
-			}
-			return;
+			// if (!backtestRunning && !silent) {
+			// 	playCashSound();
+			// 	showFloatingCash(`+$${profit.toFixed(2)}`);
+			// }
+			return true;
 		}
 
 		trackerRef.current.realizedPnL -= cost;
 		trackerRef.current.liveLosses += 1;
-		if (!backtestRunning) {
-			showFloatingCash(`-$${cost.toFixed(2)}`, true);
-		}
+		// if (!backtestRunning && !silent) {
+		// 	showFloatingCash(`-$${cost.toFixed(2)}`, true);
+		// }
+		return true;
 	};
 
 	const processAlertsForPnL = (
@@ -637,17 +616,25 @@ export function TerminalPage() {
 			betSizing?: BetSizing;
 			category?: string;
 			winnerFilter?: WinnerFilter;
+			resolveClosedWithMarketDataOnly?: boolean;
 		},
 	) => {
 		const modes = sortStrategies(options?.modes ?? selectedStrategies);
-		const minFilter = options?.minPrice ?? minPriceFilter;
-		const maxFilter = options?.maxPrice ?? maxPriceFilter;
+		const normalizedRange = normalizePriceRange(
+			options?.minPrice ?? minPriceFilter,
+			options?.maxPrice ?? maxPriceFilter,
+		);
+		const minFilter = normalizedRange.min;
+		const maxFilter = normalizedRange.max;
 		const oneBetOnly = options?.onlyBetOnce ?? onlyBetOnce;
 		const betSizing = options?.betSizing ?? selectedBetSizing;
 		const categoryFilter = normalizeCategory(
 			options?.category ?? selectedCategory,
 		);
 		const winnerFilter = options?.winnerFilter ?? selectedWinnerFilter;
+		const resolveClosedWithMarketDataOnly = Boolean(
+			options?.resolveClosedWithMarketDataOnly,
+		);
 
 		if (!incomingAlerts || incomingAlerts.length === 0 || modes.length === 0) {
 			syncTrackerState();
@@ -685,10 +672,22 @@ export function TerminalPage() {
 					isNew
 				)
 					continue;
-
 				const isPending = pendingAlertsRef.current.has(tradeId);
 
 				if (isNew) {
+					// Consistency Check: If market is closed but winner is unknown, we must NOT count this trade.
+					// This matches the behavior in backtest.ts (processTrade) to avoid "zombie" open interest.
+					if (alert.closed) {
+						const preCheckWinner = resolveClosedAlertWinner(
+							alert.winner,
+							alert.market_price ?? alert.price,
+							resolveClosedWithMarketDataOnly,
+						);
+						if (preCheckWinner === null) {
+							continue;
+						}
+					}
+
 					processedAlertsRef.current.add(tradeId);
 					if (conditionKey && oneBetOnly) {
 						betConditionsRef.current.add(conditionKey);
@@ -698,35 +697,53 @@ export function TerminalPage() {
 					const cost = calculateTradeCost(entryPrice, betSizing);
 
 					trackerRef.current.liveTotalBet += cost;
+					const pendingTrade: PendingAlert = {
+						id: tradeId,
+						trader: alert.user,
+						detectedAt: Number(alert.alert_time),
+						volume: Number(alert.volume || 0),
+						conditionId: alert.conditionId,
+						tokenId: alert.tokenId,
+						user: alert.user,
+						alert_time: Number(alert.alert_time),
+						outcome: String(alert.outcome ?? ""),
+						price: entryPrice,
+						marketQuestion: alert.question ?? "",
+						cost,
+						mode,
+						betSizing,
+					};
 
 					if (!alert.closed) {
-						pendingAlertsRef.current.set(tradeId, {
-							conditionId: alert.conditionId,
-							tokenId: alert.tokenId,
-							user: alert.user,
-							alert_time: Number(alert.alert_time),
-							outcome: alert.outcome,
-							price: entryPrice,
-							cost,
-							mode,
-							betSizing,
-						});
+						pendingAlertsRef.current.set(tradeId, pendingTrade);
 					} else {
-						const winner = inferInsiderWin(
+						const winner = resolveClosedAlertWinner(
 							alert.winner,
 							alert.market_price ?? alert.price,
+							resolveClosedWithMarketDataOnly,
 						);
-						settleTrade(cost, entryPrice, winner, silent, mode, betSizing);
+						const didSettle = settleTrade(
+							cost,
+							entryPrice,
+							winner,
+							silent,
+							mode,
+							betSizing,
+						);
+						if (!didSettle) {
+							pendingAlertsRef.current.set(tradeId, pendingTrade);
+						}
 					}
 				} else if (isPending && alert.closed) {
 					const pending = pendingAlertsRef.current.get(tradeId);
 					if (!pending) continue;
 
-					const winner = inferInsiderWin(
+					const winner = resolveClosedAlertWinner(
 						alert.winner,
 						alert.market_price ?? alert.price,
+						resolveClosedWithMarketDataOnly,
 					);
-					settleTrade(
+					const didSettle = settleTrade(
 						pending.cost,
 						pending.price,
 						winner,
@@ -734,7 +751,9 @@ export function TerminalPage() {
 						pending.mode,
 						pending.betSizing,
 					);
-					pendingAlertsRef.current.delete(tradeId);
+					if (didSettle) {
+						pendingAlertsRef.current.delete(tradeId);
+					}
 				}
 			}
 		}
@@ -742,26 +761,61 @@ export function TerminalPage() {
 		syncTrackerState();
 	};
 
-	const resetTrackerState = () => {
+	const resetTrackerState = (options: { clearHistory?: boolean } = {}) => {
+		const { clearHistory = true } = options;
 		trackerRef.current = { ...INITIAL_TRACKER_STATE };
-		processedAlertsRef.current.clear();
+
+		if (clearHistory) {
+			processedAlertsRef.current.clear();
+			allHistoryRef.current = [];
+			lastAlertTimeRef.current = 0;
+		} else {
+			// Reset only trade-specific processing, keep history-tracking keys
+			const nextProcessed = new Set<string>();
+			for (const key of processedAlertsRef.current) {
+				if (key.startsWith("history:")) {
+					nextProcessed.add(key);
+				}
+			}
+			processedAlertsRef.current = nextProcessed;
+		}
+
 		betConditionsRef.current.clear();
 		pendingAlertsRef.current.clear();
-		allHistoryRef.current = [];
-		lastAlertTimeRef.current = 0;
+		resetBacktestProgress();
 		syncTrackerState();
 	};
 
 	const fetchDetailsForRow = async (rowId: string, alert: AlertItem) => {
-		const trades = await fetchInsiderTrades(alert.user);
+		const userKey = alert.walletAddress || alert.user;
+		const trades = await fetchInsiderTrades(userKey);
+
+		// Try to find the exact trade that triggered this alert in the user's history
 		const scopedTrades =
 			alert.conditionId && alert.conditionId.length > 0
 				? trades.filter(
 						(trade) =>
 							String(trade.condition_id ?? "") === String(alert.conditionId),
 					)
-				: trades;
-		const visibleTrades = scopedTrades.length > 0 ? scopedTrades : trades;
+				: [];
+
+		// If we found trades but none match the specific condition, use all trades as visible
+		// Otherwise, if we have no trades at all, we'll synthesize one from the alert
+		let visibleTrades = scopedTrades.length > 0 ? scopedTrades : trades;
+
+		if (visibleTrades.length === 0) {
+			// Synthesize a trade from the alert itself so the user always sees something
+			visibleTrades = [
+				{
+					position_id: null,
+					condition_id: alert.conditionId,
+					volume: alert.volume,
+					question: alert.question ?? null,
+					outcome: alert.outcome,
+					price: alert.price,
+				},
+			];
+		}
 
 		let html = "";
 		const rowAlertPrice = Number(alert.price || 0).toFixed(2);
@@ -775,32 +829,27 @@ export function TerminalPage() {
 			"reverse_insider",
 		).toFixed(2);
 
-		if (visibleTrades.length === 0) {
-			html =
-				'<div style="color: var(--text-dim);">No low-odds trades found for this user.</div>';
-		} else {
-			const rows = visibleTrades
-				.map((trade) => {
-					const outcome = mapOutcome(trade.outcome);
-					const volume = Number(trade.volume || 0).toLocaleString(undefined, {
-						minimumFractionDigits: 2,
-						maximumFractionDigits: 2,
-					});
-					const questionText =
-						trade.question ||
-						`Condition: ${String(trade.condition_id ?? "unknown").slice(0, 10)}...`;
+		const rows = visibleTrades
+			.map((trade) => {
+				const outcome = mapOutcome(trade.outcome);
+				const volume = Number(trade.volume || 0).toLocaleString(undefined, {
+					minimumFractionDigits: 2,
+					maximumFractionDigits: 2,
+				});
+				const questionText =
+					trade.question ||
+					`Condition: ${String(trade.condition_id ?? "unknown").slice(0, 10)}...`;
 
-					return `<div class="trade-item-grid"><div class="trade-item-asset"><span class="question">${questionText}</span><span class="pos-id">${String(trade.position_id || "-").slice(0, 10)}...</span></div><div><span class="outcome-tag ${outcome.className}">${outcome.label}</span></div><div class="val">$${volume}</div><div class="val accent">${Number(trade.price || 0).toFixed(2)}</div></div>`;
-				})
-				.join("");
+				return `<div class="trade-item-grid"><div class="trade-item-asset"><span class="question">${questionText}</span><span class="pos-id">${String(trade.position_id || "-").slice(0, 10)}...</span></div><div><span class="outcome-tag ${outcome.className}">${outcome.label}</span></div><div class="val">$${volume}</div><div class="val accent">${Number(trade.price || 0).toFixed(2)}</div></div>`;
+			})
+			.join("");
 
-			const fallbackNotice =
-				scopedTrades.length === 0 && alert.conditionId
-					? '<div style="color: var(--text-dim); margin: 0 0 8px 0;">No exact market match for this alert condition. Showing recent trades for this wallet.</div>'
-					: "";
+		const fallbackNotice =
+			scopedTrades.length === 0 && alert.conditionId && trades.length > 0
+				? '<div style="color: var(--text-dim); margin: 0 0 8px 0;">No exact market match for this alert condition. Showing recent trades for this wallet.</div>'
+				: "";
 
-			html = `<div class="trade-details-box"><div style="color: var(--text-dim); margin: 0 0 8px 0;">Row Outcome: <span class="accent">${rowOutcome}</span> | Alert Price: <span class="accent">${rowAlertPrice}</span> | Follow Entry: <span class="accent">${followEntryPrice}</span> | Reverse Entry: <span class="accent">${reverseEntryPrice}</span></div>${fallbackNotice}<div class="trade-details-header"><div>Asset Traded</div><div>Outcome</div><div>Volume (USDC)</div><div>Alert Price</div></div>${rows}</div>`;
-		}
+		html = `<div class="trade-details-box"><div style="color: var(--text-dim); margin: 0 0 8px 0;">Row Outcome: <span class="accent">${rowOutcome}</span> | Alert Price: <span class="accent">${rowAlertPrice}</span> | Follow Entry: <span class="accent">${followEntryPrice}</span> | Reverse Entry: <span class="accent">${reverseEntryPrice}</span></div>${fallbackNotice}<div class="trade-details-header"><div>Asset Traded</div><div>Outcome</div><div>Volume (USDC)</div><div>Alert Price</div></div>${rows}</div>`;
 
 		const nextDetails = { ...detailsRef.current, [rowId]: html };
 		detailsRef.current = nextDetails;
@@ -821,17 +870,20 @@ export function TerminalPage() {
 			showLoading?: boolean;
 		},
 	) => {
+		const requestId = ++alertsRequestSeqRef.current;
 		const showLoading = options?.showLoading ?? true;
-		if (showLoading) {
+		if (showLoading && isMountedRef.current) {
 			setAlertsLoading(true);
 		}
 
 		try {
 			const modes = sortStrategies(options?.modes ?? selectedStrategies);
-			const minFilter = options?.minPrice ?? minPriceFilter;
-			const maxFilter = options?.maxPrice ?? maxPriceFilter;
-			const oneBetOnly = options?.onlyBetOnce ?? onlyBetOnce;
-			const betSizing = options?.betSizing ?? selectedBetSizing;
+			const normalizedRange = normalizePriceRange(
+				options?.minPrice ?? minPriceFilter,
+				options?.maxPrice ?? maxPriceFilter,
+			);
+			const minFilter = normalizedRange.min;
+			const maxFilter = normalizedRange.max;
 			const categoryFilter = normalizeCategory(
 				options?.category ?? selectedCategory,
 			);
@@ -844,6 +896,9 @@ export function TerminalPage() {
 				ALERTS_PAGE_SIZE,
 				categoryFilter === "ALL" ? undefined : categoryFilter,
 			);
+			if (requestId !== alertsRequestSeqRef.current || !isMountedRef.current) {
+				return;
+			}
 			const basePage = response.pagination.page || page;
 			const dedupe = new Set<string>();
 			const nextAlerts: AlertItem[] = [];
@@ -876,11 +931,23 @@ export function TerminalPage() {
 				hasNext &&
 				fillCount < MAX_ALERT_FILL_PAGES
 			) {
+				if (
+					requestId !== alertsRequestSeqRef.current ||
+					!isMountedRef.current
+				) {
+					return;
+				}
 				const extra = await fetchAlerts(
 					nextPage,
 					ALERTS_PAGE_SIZE,
 					categoryFilter === "ALL" ? undefined : categoryFilter,
 				);
+				if (
+					requestId !== alertsRequestSeqRef.current ||
+					!isMountedRef.current
+				) {
+					return;
+				}
 				appendUnique(extra.data);
 				filledThroughPage = extra.pagination.page || nextPage;
 				hasNext = extra.pagination.hasNext;
@@ -888,6 +955,9 @@ export function TerminalPage() {
 				fillCount += 1;
 			}
 
+			if (requestId !== alertsRequestSeqRef.current || !isMountedRef.current) {
+				return;
+			}
 			setAlerts(nextAlerts);
 			setAlertsPagination(response.pagination);
 			setCurrentPage(basePage);
@@ -900,18 +970,6 @@ export function TerminalPage() {
 				if (latestTimestamp > lastAlertTimeRef.current) {
 					lastAlertTimeRef.current = latestTimestamp;
 				}
-
-				const isSilentLoad = initialLoadRef.current;
-
-				processAlertsForPnL(nextAlerts, isSilentLoad, {
-					modes,
-					minPrice: minFilter,
-					maxPrice: maxFilter,
-					onlyBetOnce: oneBetOnly,
-					betSizing,
-					category: categoryFilter,
-					winnerFilter,
-				});
 
 				if (shouldOpenFirstRow) {
 					const firstAlert = nextAlerts[0];
@@ -933,11 +991,18 @@ export function TerminalPage() {
 				}
 			}
 		} catch (error) {
+			if (requestId !== alertsRequestSeqRef.current || !isMountedRef.current) {
+				return;
+			}
 			console.error("Failed to load insider alerts", error);
 			setAlerts([]);
 			setAlertsFilledThroughPage(page);
 		} finally {
-			if (showLoading) {
+			if (
+				showLoading &&
+				requestId === alertsRequestSeqRef.current &&
+				isMountedRef.current
+			) {
 				setAlertsLoading(false);
 			}
 		}
@@ -945,20 +1010,26 @@ export function TerminalPage() {
 
 	const loadMarkets = async (page = 1, options?: { showLoading?: boolean }) => {
 		const showLoading = options?.showLoading ?? true;
-		if (showLoading) {
+		if (showLoading && isMountedRef.current) {
 			setMarketsLoading(true);
 		}
 
 		try {
-			const response = await fetchMarkets(page, MARKETS_PAGE_SIZE, false);
+			const response = await fetchTopLiquidityMarkets(
+				page,
+				MARKETS_PAGE_SIZE,
+				false,
+			);
+			if (!isMountedRef.current) return;
 			setMarketsRaw(response.data);
 			setMarketsPagination(response.pagination);
 			setMarketsCurrentPage(response.pagination.page || page);
 		} catch (error) {
+			if (!isMountedRef.current) return;
 			console.error("Failed to load markets", error);
 			setMarketsRaw([]);
 		} finally {
-			if (showLoading) {
+			if (showLoading && isMountedRef.current) {
 				setMarketsLoading(false);
 			}
 		}
@@ -969,10 +1040,12 @@ export function TerminalPage() {
 		if (marketStatsInFlightRef.current.has(conditionId)) return;
 
 		marketStatsInFlightRef.current.add(conditionId);
-		setMarketStatsLoadingByCondition((prev) => ({
-			...prev,
-			[conditionId]: true,
-		}));
+		if (isMountedRef.current) {
+			setMarketStatsLoadingByCondition((prev) => ({
+				...prev,
+				[conditionId]: true,
+			}));
+		}
 
 		try {
 			const market = await fetchMarket(conditionId);
@@ -1019,6 +1092,7 @@ export function TerminalPage() {
 
 			if (statsByTokenId.size === 0 && statsByOutcome.size === 0) return;
 
+			if (!isMountedRef.current) return;
 			setMarketsRaw((prev) =>
 				prev.map((outcome) => {
 					if (outcome.conditionId !== conditionId) return outcome;
@@ -1040,25 +1114,30 @@ export function TerminalPage() {
 			console.error("Failed to lazy-load market stats", error);
 		} finally {
 			marketStatsInFlightRef.current.delete(conditionId);
-			setMarketStatsLoadingByCondition((prev) => ({
-				...prev,
-				[conditionId]: false,
-			}));
+			if (isMountedRef.current) {
+				setMarketStatsLoadingByCondition((prev) => ({
+					...prev,
+					[conditionId]: false,
+				}));
+			}
 		}
 	};
 
 	const loadGlobalStats = async () => {
 		const nextStats = await fetchGlobalStats();
+		if (!isMountedRef.current) return;
 		setGlobalStats(nextStats);
 	};
 
 	const loadInsiderStats = async () => {
 		const nextStats = await fetchInsiderStats();
+		if (!isMountedRef.current) return;
 		setInsiderStats(nextStats);
 	};
 
 	const loadSyncStatus = async () => {
 		const payload = await fetchHealth();
+		if (!isMountedRef.current) return;
 		if (
 			!payload ||
 			(Object.keys(payload).length === 0 && payload.constructor === Object)
@@ -1077,79 +1156,94 @@ export function TerminalPage() {
 
 	const refreshMarkets = async () => {
 		if (!autoRefreshEnabled || backtestRunning) return;
-		await Promise.all([
-			loadInsiderAlerts(currentPage, { showLoading: false }),
-			loadMarkets(marketsCurrentPage, { showLoading: false }),
-		]);
+		if (refreshInFlightRef.current) return;
+		refreshInFlightRef.current = true;
+		try {
+			await Promise.all([
+				loadInsiderAlerts(currentPage, { showLoading: false }),
+				loadMarkets(marketsCurrentPage, { showLoading: false }),
+			]);
+		} finally {
+			refreshInFlightRef.current = false;
+		}
 	};
 
 	const checkPendingResolutions = async () => {
+		if (pendingResolutionInFlightRef.current) return;
 		if (pendingAlertsRef.current.size === 0) return;
+		pendingResolutionInFlightRef.current = true;
 
-		const groupedByCondition = new Map<
-			string,
-			Array<{ id: string; pending: PendingAlert }>
-		>();
+		try {
+			const groupedByCondition = new Map<
+				string,
+				Array<{ id: string; pending: PendingAlert }>
+			>();
 
-		for (const [id, pending] of pendingAlertsRef.current.entries()) {
-			if (!pending.conditionId) continue;
-			const list = groupedByCondition.get(pending.conditionId) ?? [];
-			list.push({ id, pending });
-			groupedByCondition.set(pending.conditionId, list);
-		}
-
-		for (const [conditionId, entries] of groupedByCondition.entries()) {
-			const market = await fetchMarket(conditionId);
-			if (!market) continue;
-
-			const marketClosed = toBoolean((market as { closed?: unknown }).closed);
-			if (!marketClosed) continue;
-
-			const outcomesRaw = (market as { outcomes?: unknown }).outcomes;
-			const outcomes = Array.isArray(outcomesRaw) ? outcomesRaw : [];
-
-			for (const { id, pending } of entries) {
-				const resolvedOutcome = outcomes.find((outcome) => {
-					if (typeof outcome !== "object" || outcome === null) return false;
-					const tokenId = (outcome as { tokenId?: unknown }).tokenId;
-					return String(tokenId ?? "") === String(pending.tokenId ?? "");
-				});
-
-				const winner =
-					resolvedOutcome && typeof resolvedOutcome === "object"
-						? inferInsiderWin(
-								(resolvedOutcome as { winner?: unknown }).winner,
-								(
-									resolvedOutcome as {
-										lastPrice?: unknown;
-										last_price?: unknown;
-									}
-								).lastPrice ??
-									(
-										resolvedOutcome as {
-											lastPrice?: unknown;
-											last_price?: unknown;
-										}
-									).last_price,
-							)
-						: null;
-
-				settleTrade(
-					pending.cost,
-					pending.price,
-					winner,
-					false,
-					pending.mode,
-					pending.betSizing,
-				);
-				pendingAlertsRef.current.delete(id);
+			for (const [id, pending] of pendingAlertsRef.current.entries()) {
+				if (!pending.conditionId) continue;
+				const list = groupedByCondition.get(pending.conditionId) ?? [];
+				list.push({ id, pending });
+				groupedByCondition.set(pending.conditionId, list);
 			}
-		}
 
-		syncTrackerState();
+			for (const [conditionId, entries] of groupedByCondition.entries()) {
+				const market = await fetchMarket(conditionId);
+				if (!market) continue;
+
+				const marketClosed = toBoolean((market as { closed?: unknown }).closed);
+				if (!marketClosed) continue;
+
+				const outcomesRaw = (market as { outcomes?: unknown }).outcomes;
+				const outcomes = Array.isArray(outcomesRaw) ? outcomesRaw : [];
+
+				for (const { id, pending } of entries) {
+					const pendingTokenId = String(pending.tokenId ?? "");
+					const pendingOutcome = String(pending.outcome ?? "").toUpperCase();
+					const resolvedOutcome = outcomes.find((outcome) => {
+						if (typeof outcome !== "object" || outcome === null) return false;
+						const row = outcome as {
+							tokenId?: unknown;
+							outcome?: unknown;
+						};
+						const tokenId = String(row.tokenId ?? "");
+						if (pendingTokenId && tokenId) {
+							return tokenId === pendingTokenId;
+						}
+						if (!pendingOutcome) return false;
+						return String(row.outcome ?? "").toUpperCase() === pendingOutcome;
+					});
+
+					const winner =
+						resolvedOutcome && typeof resolvedOutcome === "object"
+							? parseWinnerValue(
+									(resolvedOutcome as { winner?: unknown }).winner,
+								)
+							: null;
+					if (winner === null) continue;
+
+					const didSettle = settleTrade(
+						pending.cost,
+						pending.price,
+						winner,
+						false,
+						pending.mode,
+						pending.betSizing,
+					);
+					if (didSettle) {
+						pendingAlertsRef.current.delete(id);
+					}
+				}
+			}
+
+			syncTrackerState();
+		} finally {
+			pendingResolutionInFlightRef.current = false;
+		}
 	};
 
 	const setStrategyEnabled = (mode: StrategyMode, enabled: boolean) => {
+		if (backtestRunning) return;
+		switchToLiveComputation();
 		setSelectedStrategies((prev) => {
 			const nextRaw = enabled
 				? [...prev, mode]
@@ -1157,20 +1251,7 @@ export function TerminalPage() {
 			const next = sortStrategies(nextRaw);
 			if (next.length === 0) return prev;
 
-			const history = [...allHistoryRef.current];
-			resetTrackerState();
-			if (history.length > 0) {
-				processAlertsForPnL(history, true, {
-					modes: next,
-					minPrice: minPriceFilter,
-					maxPrice: maxPriceFilter,
-					onlyBetOnce,
-					betSizing: selectedBetSizing,
-					category: selectedCategory,
-					winnerFilter: selectedWinnerFilter,
-				});
-			}
-
+			resetBacktestProgress();
 			void loadInsiderAlerts(currentPage, {
 				modes: next,
 				minPrice: minPriceFilter,
@@ -1190,33 +1271,15 @@ export function TerminalPage() {
 		nextMaxRaw: number,
 		nextOnlyBetOnce: boolean,
 	) => {
-		let min = clampPrice(nextMinRaw, 0.01);
-		let max = clampPrice(nextMaxRaw, 1.0);
-
-		if (min > max) {
-			const temp = min;
-			min = max;
-			max = temp;
-		}
+		if (backtestRunning) return;
+		switchToLiveComputation();
+		const { min, max } = normalizePriceRange(nextMinRaw, nextMaxRaw);
 
 		setMinPriceFilter(min);
 		setMaxPriceFilter(max);
 		setOnlyBetOnce(nextOnlyBetOnce);
 
-		const history = [...allHistoryRef.current];
-		resetTrackerState();
-		if (history.length > 0) {
-			processAlertsForPnL(history, true, {
-				modes: selectedStrategies,
-				minPrice: min,
-				maxPrice: max,
-				onlyBetOnce: nextOnlyBetOnce,
-				betSizing: selectedBetSizing,
-				category: selectedCategory,
-				winnerFilter: selectedWinnerFilter,
-			});
-		}
-
+		resetBacktestProgress();
 		void loadInsiderAlerts(currentPage, {
 			modes: selectedStrategies,
 			minPrice: min,
@@ -1229,54 +1292,22 @@ export function TerminalPage() {
 	};
 
 	const applyBetSizingMode = (betOneDollarPerTrade: boolean) => {
+		if (backtestRunning) return;
+		switchToLiveComputation();
 		const nextBetSizing: BetSizing = betOneDollarPerTrade
 			? "fixed_stake"
 			: "target_payout";
 		setSelectedBetSizing(nextBetSizing);
-
-		const history = [...allHistoryRef.current];
-		resetTrackerState();
-		if (history.length > 0) {
-			processAlertsForPnL(history, true, {
-				modes: selectedStrategies,
-				minPrice: minPriceFilter,
-				maxPrice: maxPriceFilter,
-				onlyBetOnce,
-				betSizing: nextBetSizing,
-				category: selectedCategory,
-				winnerFilter: selectedWinnerFilter,
-			});
-		}
-
-		void loadInsiderAlerts(currentPage, {
-			modes: selectedStrategies,
-			minPrice: minPriceFilter,
-			maxPrice: maxPriceFilter,
-			onlyBetOnce,
-			betSizing: nextBetSizing,
-			category: selectedCategory,
-			winnerFilter: selectedWinnerFilter,
-		});
+		resetBacktestProgress();
 	};
 
 	const applyCategoryFilter = (nextCategoryRaw: string) => {
+		if (backtestRunning) return;
+		switchToLiveComputation();
 		const nextCategory = normalizeCategory(nextCategoryRaw);
 		setSelectedCategory(nextCategory);
 
-		const history = [...allHistoryRef.current];
-		resetTrackerState();
-		if (history.length > 0) {
-			processAlertsForPnL(history, true, {
-				modes: selectedStrategies,
-				minPrice: minPriceFilter,
-				maxPrice: maxPriceFilter,
-				onlyBetOnce,
-				betSizing: selectedBetSizing,
-				category: nextCategory,
-				winnerFilter: selectedWinnerFilter,
-			});
-		}
-
+		resetBacktestProgress();
 		void loadInsiderAlerts(currentPage, {
 			modes: selectedStrategies,
 			minPrice: minPriceFilter,
@@ -1289,22 +1320,11 @@ export function TerminalPage() {
 	};
 
 	const applyWinnerFilter = (nextWinnerFilter: WinnerFilter) => {
+		if (backtestRunning) return;
+		switchToLiveComputation();
 		setSelectedWinnerFilter(nextWinnerFilter);
 
-		const history = [...allHistoryRef.current];
-		resetTrackerState();
-		if (history.length > 0) {
-			processAlertsForPnL(history, true, {
-				modes: selectedStrategies,
-				minPrice: minPriceFilter,
-				maxPrice: maxPriceFilter,
-				onlyBetOnce,
-				betSizing: selectedBetSizing,
-				category: selectedCategory,
-				winnerFilter: nextWinnerFilter,
-			});
-		}
-
+		resetBacktestProgress();
 		void loadInsiderAlerts(currentPage, {
 			modes: selectedStrategies,
 			minPrice: minPriceFilter,
@@ -1317,10 +1337,17 @@ export function TerminalPage() {
 	};
 
 	const runBacktest = async () => {
-		if (backtestRunning) return;
+		if (backtestRunning || backtestRunLockRef.current) return;
 
+		backtestRunLockRef.current = true;
+		pnlComputationModeRef.current = "backtest";
+		if (liveRecalcDebounceRef.current) {
+			clearTimeout(liveRecalcDebounceRef.current);
+			liveRecalcDebounceRef.current = null;
+		}
 		setBacktestRunning(true);
 		setAutoRefreshEnabled(false);
+		const normalizedRange = normalizePriceRange(minPriceFilter, maxPriceFilter);
 
 		const continueExistingRun =
 			backtestCanContinue && backtestHasNextRef.current;
@@ -1336,6 +1363,7 @@ export function TerminalPage() {
 			let page = backtestNextPageRef.current;
 			let hasNext = backtestHasNextRef.current;
 			const runStartTrades = trackerRef.current.liveTrades;
+			let pagesSinceResolutionCheck = 0;
 
 			while (hasNext) {
 				const response = await fetchAlerts(
@@ -1345,19 +1373,26 @@ export function TerminalPage() {
 				);
 				processAlertsForPnL(response.data, false, {
 					modes: selectedStrategies,
-					minPrice: minPriceFilter,
-					maxPrice: maxPriceFilter,
+					minPrice: normalizedRange.min,
+					maxPrice: normalizedRange.max,
 					onlyBetOnce,
 					betSizing: selectedBetSizing,
 					category: selectedCategory,
 					winnerFilter: selectedWinnerFilter,
+					resolveClosedWithMarketDataOnly: true,
 				});
-				await checkPendingResolutions();
-
 				hasNext = response.pagination.hasNext;
 				page = (response.pagination.page || page) + 1;
 				backtestHasNextRef.current = hasNext;
 				backtestNextPageRef.current = page;
+				pagesSinceResolutionCheck += 1;
+				if (
+					pagesSinceResolutionCheck >= BACKTEST_RESOLUTION_CHECK_EVERY_PAGES ||
+					!hasNext
+				) {
+					await checkPendingResolutions();
+					pagesSinceResolutionCheck = 0;
+				}
 
 				const processedTradesThisRun =
 					trackerRef.current.liveTrades - runStartTrades;
@@ -1366,19 +1401,22 @@ export function TerminalPage() {
 					return;
 				}
 
-				await new Promise((resolve) =>
-					setTimeout(resolve, BACKTEST_PAGE_DELAY_MS),
-				);
+				if (BACKTEST_PAGE_DELAY_MS > 0) {
+					await new Promise((resolve) =>
+						setTimeout(resolve, BACKTEST_PAGE_DELAY_MS),
+					);
+				}
 			}
 
 			await checkPendingResolutions();
 
-			backtestHasNextRef.current = false;
-			backtestNextPageRef.current = 1;
-			setBacktestCanContinue(false);
+			resetBacktestProgress();
+			pnlComputationModeRef.current = "live";
 		} catch (error) {
 			console.error("Backtest failed", error);
+			pnlComputationModeRef.current = "live";
 		} finally {
+			backtestRunLockRef.current = false;
 			setBacktestRunning(false);
 		}
 	};
@@ -1399,16 +1437,113 @@ export function TerminalPage() {
 	};
 
 	const changeAlertsPage = (delta: number) => {
+		switchToLiveComputation();
 		const targetPage = Math.max(1, currentPage + delta);
 		setAutoRefreshEnabled(false);
 		void loadInsiderAlerts(targetPage, { openFirstRow: true });
 	};
 
 	const changeMarketsPage = (delta: number) => {
+		switchToLiveComputation();
 		const targetPage = Math.max(1, marketsCurrentPage + delta);
 		setAutoRefreshEnabled(false);
 		void loadMarkets(targetPage);
 	};
+
+	useEffect(() => {
+		isMountedRef.current = true;
+		return () => {
+			isMountedRef.current = false;
+		};
+	}, []);
+
+	useEffect(() => {
+		if (backtestRunning) return;
+		if (pnlComputationModeRef.current !== "live") return;
+
+		const modes = sortStrategies(selectedStrategies);
+		const normalizedRange = normalizePriceRange(minPriceFilter, maxPriceFilter);
+		const categoryFilter = normalizeCategory(selectedCategory);
+		const settingsSnapshot = {
+			modes,
+			minPrice: normalizedRange.min,
+			maxPrice: normalizedRange.max,
+			onlyBetOnce,
+			betSizing: selectedBetSizing,
+			category: categoryFilter,
+			winnerFilter: selectedWinnerFilter,
+		};
+		const alertsSnapshot = alerts.map((alert) => createAlertKey(alert));
+		const nextSignature = JSON.stringify({
+			settings: settingsSnapshot,
+			alerts: alertsSnapshot,
+		});
+
+		if (nextSignature === lastLiveRecalcSignatureRef.current) {
+			return;
+		}
+
+		if (liveRecalcDebounceRef.current) {
+			clearTimeout(liveRecalcDebounceRef.current);
+			liveRecalcDebounceRef.current = null;
+		}
+
+		liveRecalcDebounceRef.current = setTimeout(() => {
+			if (!isMountedRef.current) return;
+			if (backtestRunning) return;
+			if (pnlComputationModeRef.current !== "live") return;
+			if (nextSignature === lastLiveRecalcSignatureRef.current) return;
+
+			lastLiveRecalcSignatureRef.current = nextSignature;
+
+			// Ensure current alerts are tracked in history
+			for (const alert of alerts) {
+				const historyId = createAlertKey(alert);
+				const historyKey = `history:${historyId}`;
+				if (!processedAlertsRef.current.has(historyKey)) {
+					processedAlertsRef.current.add(historyKey);
+					allHistoryRef.current.push(alert);
+				}
+			}
+
+			resetTrackerState({ clearHistory: false });
+
+			if (allHistoryRef.current.length === 0) return;
+
+			// Sort history by time ascending for consistent recalculation (especially for onlyBetOnce)
+			const sortedHistory = [...allHistoryRef.current].sort(
+				(a, b) => Number(a.alert_time) - Number(b.alert_time),
+			);
+
+			processAlertsForPnL(sortedHistory, true, {
+				modes,
+				minPrice: normalizedRange.min,
+				maxPrice: normalizedRange.max,
+				onlyBetOnce,
+				betSizing: selectedBetSizing,
+				category: categoryFilter,
+				winnerFilter: selectedWinnerFilter,
+				resolveClosedWithMarketDataOnly: true, // Enforce strict mode to match Backtest Runner
+			});
+		}, 120);
+
+		return () => {
+			if (liveRecalcDebounceRef.current) {
+				clearTimeout(liveRecalcDebounceRef.current);
+				liveRecalcDebounceRef.current = null;
+			}
+		};
+	}, [
+		alerts,
+		backtestRunning,
+		maxPriceFilter,
+		minPriceFilter,
+		onlyBetOnce,
+		selectedBetSizing,
+		selectedCategory,
+		selectedStrategies,
+		selectedWinnerFilter,
+	]);
 
 	useEffect(() => {
 		for (const market of groupedMarkets) {
@@ -1566,6 +1701,8 @@ export function TerminalPage() {
 					maxPrice={maxPriceFilter}
 					onlyBetOnce={onlyBetOnce}
 					betOneDollarPerTrade={selectedBetSizing === "fixed_stake"}
+					disabled={backtestRunning}
+					soundEnabled={soundEnabled}
 					selectedStrategies={selectedStrategies}
 					onMinPriceChange={(value) =>
 						applyFilters(value, maxPriceFilter, onlyBetOnce)
@@ -1577,6 +1714,7 @@ export function TerminalPage() {
 						applyFilters(minPriceFilter, maxPriceFilter, value)
 					}
 					onBetOneDollarPerTradeChange={applyBetSizingMode}
+					onSoundToggle={setSoundEnabled}
 					onStrategyChange={setStrategyEnabled}
 				/>
 
@@ -1605,9 +1743,6 @@ export function TerminalPage() {
 						className={`floating-cash ${entry.isLoss ? "loss" : "win"}`}
 						style={{ left: `calc(50% + ${entry.offset}vw)` }}
 					>
-						<span className="floating-cash-tag">
-							{entry.isLoss ? "LOSS" : "WIN"}
-						</span>
 						<span className="floating-cash-value">{entry.text}</span>
 					</div>
 				))}

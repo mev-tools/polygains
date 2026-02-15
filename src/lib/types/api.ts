@@ -79,3 +79,15 @@ export interface HealthResponse {
 	status: string;
 	current_block: number;
 }
+
+export interface AlertRowView {
+	id: string;
+	walletAddress: string;
+	detectedAt: number;
+	volume: string;
+	trades: number;
+	assetId: string;
+	price: string;
+	payout: string;
+	outcome: string;
+}

@@ -5,8 +5,7 @@ import {
 	type TraderData,
 	WindowBuffer,
 } from "@/services/buffer";
-import { InsiderDetector } from "@/services/insider";
-import { NotInsiderDetector } from "@/services/notinsider";
+import { InsiderDetector, NotInsiderDetector } from "@/services/detector-v2";
 
 describe("WindowBuffer", () => {
 	let buffer: WindowBuffer<TraderData>;

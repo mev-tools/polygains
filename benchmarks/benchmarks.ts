@@ -117,12 +117,21 @@ measure(() => {
 	}
 }, `Flush() ${NUM_TRADERS} traders (${flushedCount} expired)`);
 
+interface Order {
+	trader: string;
+	usdc: bigint;
+	shares: bigint;
+	side: number;
+	timestamp: number;
+	assetId: string;
+}
+
 // Benchmark 4: Batch processing reduce loop (pipe.ts lines 144-203)
 console.log("\n4. Batch processing reduce loop performance");
 const windowBuffer = new Map<string, TraderData>();
 
 // Create test orders - 100k orders
-const orders = [];
+const orders: Order[] = [];
 for (let i = 0; i < NUM_ORDERS; i++) {
 	orders.push({
 		trader: `0x${(i % 5000).toString(16).padStart(40, "0")}`,

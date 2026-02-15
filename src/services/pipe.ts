@@ -1,340 +1,488 @@
-import { parseOrder } from "@/lib/parser";
 import type { BlockCursor } from "@subsquid/pipes";
-import { InsiderDetector, NotInsiderDetector, XXHash32Set } from "./detector-v2";
-import { BloomFilterPersistor } from "./persistor";
+import {
+	BPS_SCALE,
+	FIFTEEN_MINUTES,
+	MIN_PRICE_BPS,
+	START_BLOCK,
+	USDC_DENOMINATOR,
+	VOLUME_THRESHOLD,
+} from "@/lib/const";
 import { loadDetector } from "@/lib/db/bloomfilter";
-import { FIFTEEN_MINUTES, VOLUME_THRESHOLD, MIN_PRICE, BPS_SCALE, MIN_PRICE_BPS } from "@/lib/const";
-import { SIDE } from "@/lib/models";
-export { WindowBuffer, InsiderEvaluator, type TraderData } from "./buffer";
-import { WindowBuffer, InsiderEvaluator, type TraderData } from "./buffer";
+import { hashWallet } from "@/lib/hash";
+import { type ParsedOrder, type PositionStats, SIDE } from "@/lib/types";
+import { type TraderData, WindowBuffer } from "./buffer";
+import {
+	InsiderDetector,
+	NotInsiderDetector,
+	XXHash32Set,
+} from "./detector-v2";
+import { BloomFilterPersistor } from "./persistor";
+import {
+	AccountAddressMapPersistor,
+	InsiderPositionsPersistor,
+	MarketStatsPersistor,
+} from "./positions-persistor";
+
+export { InsiderEvaluator, type TraderData, WindowBuffer } from "./buffer";
+
+const toBigInt = (value: number | bigint) =>
+	typeof value === "bigint" ? value : BigInt(value);
+
+const toTokenId = (value: string | number | bigint) =>
+	typeof value === "bigint" ? value.toString() : String(value);
+
+const toUsdVolume = (usdc: bigint): number =>
+	Number(usdc) / Number(USDC_DENOMINATOR);
 
 export class PolymarketPipe {
-    private cursor?: BlockCursor;
-    private stateFile = Bun.file("state.json");
-    private insiderDetector!: InsiderDetector;
-    private notInsiderDetector!: NotInsiderDetector;
-    private windowBuffer = new WindowBuffer<TraderData>(
-        FIFTEEN_MINUTES,
-        (item) => item.userStats.firstSeen,
-        (item) => item.id
-    );
-    private evaluator!: InsiderEvaluator;
-    private persistor!: BloomFilterPersistor;
-    private insiderCount = 0;
-    private notInsiderCount = 0;
-    private initialized = false;
+	private cursor?: BlockCursor;
+	private stateFile = Bun.file("state.json");
+	private insiderDetector!: InsiderDetector;
+	private notInsiderDetector!: NotInsiderDetector;
+	private aggPositions = new WindowBuffer<TraderData>(
+		FIFTEEN_MINUTES,
+		(item) => item.userStats.firstSeen,
+		(item) => item.id,
+	);
+	private persistor!: BloomFilterPersistor;
+	private insiderPositionsPersistor = new InsiderPositionsPersistor();
+	private marketStatsPersistor = new MarketStatsPersistor();
+	private accountAddressMapPersistor = new AccountAddressMapPersistor();
+	private insiderCount = 0;
+	private notInsiderCount = 0;
+	private initialized = false;
 
-    constructor() {
-    }
+	/**
+	 * Initialize or recover from database snapshots
+	 */
+	async initialize(): Promise<void> {
+		if (this.initialized) {
+			return;
+		}
 
-    /**
-     * Initialize or recover from database snapshots
-     */
-    async initialize(): Promise<void> {
-        if (this.initialized) {
-            return;
-        }
+		try {
+			const [insiderSnapshot, notInsiderSnapshot] = await Promise.all([
+				loadDetector("insider"),
+				loadDetector("notinsider"),
+			]);
 
-        try {
-            // Try to load detector snapshots from database
-            const [insiderSnapshot, notInsiderSnapshot] = await Promise.all([
-                loadDetector("insider"),
-                loadDetector("notinsider"),
-            ]);
+			if (insiderSnapshot && notInsiderSnapshot) {
+				console.log(
+					"[PolymarketPipe] 🔄 Recovering from detector snapshots...",
+				);
 
-            if (insiderSnapshot && notInsiderSnapshot) {
-                // Recovery path: restore from snapshots using XXHash32Set
-                console.log("[PolymarketPipe] 🔄 Recovering from detector snapshots...");
+				const insiderSet = new XXHash32Set();
+				insiderSet.restoreSet(insiderSnapshot.dataSet);
 
-                const insiderSet = new XXHash32Set();
-                insiderSet.restoreSet(insiderSnapshot.dataSet);
+				const notInsiderSet = new XXHash32Set();
+				notInsiderSet.restoreSet(notInsiderSnapshot.dataSet);
 
-                const notInsiderSet = new XXHash32Set();
-                notInsiderSet.restoreSet(notInsiderSnapshot.dataSet);
+				this.insiderDetector = new InsiderDetector();
+				this.insiderDetector.getDetector().restoreSet(insiderSnapshot.dataSet);
 
-                this.insiderDetector = new InsiderDetector();
-                this.insiderDetector.getDetector().restoreSet(insiderSnapshot.dataSet);
+				this.notInsiderDetector = new NotInsiderDetector();
+				this.notInsiderDetector
+					.getDetector()
+					.restoreSet(notInsiderSnapshot.dataSet);
 
-                this.notInsiderDetector = new NotInsiderDetector();
-                this.notInsiderDetector.getDetector().restoreSet(notInsiderSnapshot.dataSet);
+				this.insiderCount = insiderSnapshot.itemCount;
+				this.notInsiderCount = notInsiderSnapshot.itemCount;
 
-                this.insiderCount = insiderSnapshot.itemCount;
-                this.notInsiderCount = notInsiderSnapshot.itemCount;
+				if (!this.cursor) {
+					const snapshotCursor =
+						insiderSnapshot.cursor || notInsiderSnapshot.cursor;
+					if (snapshotCursor) {
+						this.cursor = {
+							...snapshotCursor,
+							number: Math.max(snapshotCursor.number, START_BLOCK),
+						};
+						console.log(
+							`[PolymarketPipe] 📍 Restored cursor from snapshot: block ${this.cursor.number}`,
+						);
+					} else {
+						await this.loadCursorFromState();
+					}
+				}
 
-                // Restore cursor from snapshot if we don't have one already
-                // Check both snapshots (they should have the same cursor, but be defensive)
-                if (!this.cursor) {
-                    const snapshotCursor = insiderSnapshot.cursor || notInsiderSnapshot.cursor;
-                    if (snapshotCursor) {
-                        this.cursor = snapshotCursor;
-                        console.log(`[PolymarketPipe] 📍 Restored cursor from snapshot: block ${this.cursor.number}`);
-                    } else {
-                        // Fallback to state.json if snapshot doesn't have cursor
-                        await this.loadCursorFromState();
-                    }
-                }
+				console.log(
+					`[PolymarketPipe] ✅ Recovered state: ${this.insiderCount} insiders, ${this.notInsiderCount} non-insiders`,
+				);
+			} else {
+				console.log("[PolymarketPipe] 🆕 Starting fresh (no snapshots found)");
+				this.insiderDetector = new InsiderDetector();
+				this.notInsiderDetector = new NotInsiderDetector();
 
-                console.log(
-                    `[PolymarketPipe] ✅ Recovered state: ${this.insiderCount} insiders, ${this.notInsiderCount} non-insiders`
-                );
-            } else {
-                // Fresh start: create new detectors
-                console.log("[PolymarketPipe] 🆕 Starting fresh (no snapshots found)");
-                this.insiderDetector = new InsiderDetector();
-                this.notInsiderDetector = new NotInsiderDetector();
+				if (!this.cursor) {
+					await this.loadCursorFromState();
+				}
+			}
+		} catch (error) {
+			console.error(
+				"[PolymarketPipe] ⚠️  Recovery failed, starting fresh:",
+				error,
+			);
+			this.insiderDetector = new InsiderDetector();
+			this.notInsiderDetector = new NotInsiderDetector();
+		}
 
-                // Try to load cursor from state.json for fresh start
-                if (!this.cursor) {
-                    await this.loadCursorFromState();
-                }
-            }
-        } catch (error) {
-            console.error("[PolymarketPipe] ⚠️  Recovery failed, starting fresh:", error);
-            this.insiderDetector = new InsiderDetector();
-            this.notInsiderDetector = new NotInsiderDetector();
-        }
+		this.persistor = new BloomFilterPersistor(30, async (cursor) => {
+			await this.saveCursor(cursor);
+		});
 
-        // Initialize evaluator with detectors
-        this.evaluator = new InsiderEvaluator(
-            this.insiderDetector,
-            this.notInsiderDetector,
-            () => this.insiderCount++,
-            () => this.notInsiderCount++
-        );
+		this.initialized = true;
+	}
 
-        // Initialize persistor with callback to save cursor after bloom filters
-        this.persistor = new BloomFilterPersistor(30, async (cursor) => {
-            await this.saveCursor(cursor);
-        });
+	/**
+	 * @param input.logger - Standard Subsquid logger
+	 * @param input.read - Async generator providing batches of data
+	 */
+	async write({
+		logger,
+		read,
+	}: {
+		logger: { error: (error: unknown, message?: string) => void };
+		read: (cursor?: BlockCursor) => AsyncIterable<unknown>;
+	}) {
+		await this.initialize();
 
-        this.initialized = true;
-    }
+		const currentCursor = await this.getCursor();
+		const stream = read(currentCursor);
+		let latestTimestamp = 0;
 
-    /**
-     * @param input.logger - Standard Subsquid logger
-     * @param input.read - Async generator providing batches of data
-     */
-    async write({
-        logger,
-        read,
-    }: {
-        logger: { error: (error: unknown, message?: string) => void };
-        read: (cursor?: BlockCursor) => AsyncIterable<any>;
-    }) {
-        // Initialize/recover state before processing
-        await this.initialize();
+		try {
+			for await (const rawBatch of stream) {
+				const batch = rawBatch as {
+					ctx?: { state?: { current?: BlockCursor & { timestamp: number } } };
+					header?: { timestamp: number };
+					data?: ParsedOrder[];
+				};
+				try {
+					latestTimestamp =
+						batch?.ctx?.state?.current?.timestamp ??
+						batch?.header?.timestamp ??
+						latestTimestamp;
 
-        const currentCursor = await this.getCursor();
-        const stream = read(currentCursor);
-        let latestTimestamp: number = 0;
-        try {
-            let reducedPositions
-            for await (const batch of stream) {
-                try {
-                    // Get current timestamp for immediate insider detection
-                    // Fallback to header or data if ctx.state.current is missing it
-                    latestTimestamp = (batch as any).ctx?.state?.current?.timestamp ?? (batch as any).header?.timestamp;
+					if (
+						(!latestTimestamp || Number.isNaN(latestTimestamp)) &&
+						batch?.data?.length > 0
+					) {
+						latestTimestamp = Number(batch.data[0].timestamp || 0);
+					}
 
-                    if ((latestTimestamp === undefined || latestTimestamp === 0) && batch.data.length > 0) {
-                        latestTimestamp = batch.data[0].timestamp;
-                    }
+					if (!latestTimestamp || Number.isNaN(latestTimestamp)) {
+						console.warn(
+							"[PolymarketPipe] ⚠️ No timestamp found in batch ctx or header",
+						);
+					}
 
-                    if (latestTimestamp === undefined || latestTimestamp === 0) {
-                        // If we still don't have a timestamp, we can't flush or evaluate correctly
-                        // but we should still process the batch data if it has timestamps.
-                        console.warn("[PolymarketPipe] ⚠️ No timestamp found in batch ctx or header");
-                    }
+					this.flushExpiredTraders(latestTimestamp);
 
-                    // Flush expired traders BEFORE consuming this batch so post-window trades
-                    // cannot inflate the "first 15 minutes" volume used for classification.
-                    const expiredBeforeBatch = this.windowBuffer.flush(latestTimestamp);
-                    this.evaluator.evaluate(expiredBeforeBatch);
+					for (const rawOrder of (batch?.data ?? []) as ParsedOrder[]) {
+						const { trader, assetId, side, timestamp } = rawOrder;
+						const orderTimestamp = Number(timestamp);
+						if (
+							Number.isFinite(orderTimestamp) &&
+							orderTimestamp > latestTimestamp
+						) {
+							latestTimestamp = orderTimestamp;
+						}
 
-                    reducedPositions = batch.data.reduce((acc, order) => {
-                        const { trader, assetId, usdc, shares, side, timestamp } = order;
+						const usdc = toBigInt(rawOrder.usdc);
+						const shares = toBigInt(rawOrder.shares);
+						if (shares <= 0n) continue;
 
-                        // Update latestTimestamp from data as we go
-                        if (timestamp > latestTimestamp) {
-                            latestTimestamp = timestamp;
-                        }
+						const accountHash = hashWallet(trader);
+						const accountKey = String(accountHash);
+						const tokenId = toTokenId(assetId);
+						const price = Number(usdc) / Number(shares);
+						const volume = toUsdVolume(usdc);
 
-                        // 2. ONLY BUY SIDE
-                        if (side !== SIDE.BUY) {
-                            return acc;
-                        }
+						if (!Number.isFinite(price) || !Number.isFinite(volume)) {
+							continue;
+						}
 
-                        // 3. PRICE > MIN_PRICE
-                        // Convert to Number safely for division to capture the exact float price (e.g., 0.15)
-                        // Note: If usdc and shares have different decimal scaling, adjust the math accordingly.
-                        if ((usdc * BPS_SCALE) <= (shares * MIN_PRICE_BPS)) {
-                            return acc;
-                        }
+						// Market stats should represent every matched fill price, regardless
+						// of insider-specific filters (side/min-price).
+						this.marketStatsPersistor.enqueue({
+							accountHash,
+							tokenId,
+							detectedAt: orderTimestamp,
+							firstSeen: orderTimestamp,
+							lastSeen: orderTimestamp,
+							volume,
+							trades: 1,
+							sumPrice: price,
+							sumPriceSq: price * price,
+						});
 
+						// Insider detection remains buy-side and low-priced outcome focused.
+						if (side !== SIDE.BUY) continue;
+						if (usdc * BPS_SCALE >= shares * MIN_PRICE_BPS) continue;
 
-                        // Skip immediately if we already know their status
-                        if (this.notInsiderDetector.has(trader) || this.insiderDetector.has(trader)) {
-                            return acc;
-                        }
+						if (this.insiderDetector.has(accountHash)) {
+							// Already detected insider -> append directly to DB.
+							this.insiderPositionsPersistor.enqueue({
+								accountHash,
+								detectedAt: orderTimestamp,
+								positions: {
+									[tokenId]: {
+										firstSeen: orderTimestamp,
+										lastSeen: orderTimestamp,
+										volume,
+										trades: 1,
+										sumPrice: price,
+										sumPriceSq: price * price,
+									},
+								},
+							});
+							continue;
+						}
 
-                        // Only count volume that happened inside the trader's first 15-minute window.
-                        const firstSeen =
-                            this.windowBuffer.get(trader)?.userStats.firstSeen ??
-                            acc.get(trader)?.firstTimestamp ??
-                            timestamp;
-                        if (timestamp - firstSeen > FIFTEEN_MINUTES) {
-                            return acc;
-                        }
+						if (this.notInsiderDetector.has(accountHash)) {
+							continue;
+						}
 
-                        const usdcBig = typeof usdc === 'bigint' ? usdc : BigInt(usdc);
+						let user = this.aggPositions.get(accountKey);
+						if (!user) {
+							user = {
+								id: accountKey,
+								wallet: trader,
+								tokenstats: {},
+								userStats: {
+									tradeVol: 0n,
+									tradeCount: 0,
+									firstSeen: orderTimestamp,
+									lastSeen: orderTimestamp,
+								},
+							};
+							this.aggPositions.set(accountKey, user);
+						} else if (!user.wallet) {
+							user.wallet = trader;
+						}
 
-                        // Initialize local aggregator for this trader if missing
-                        if (!acc.has(trader)) {
-                            acc.set(trader, {
-                                totalVol: 0n,
-                                tradeCount: 0,
-                                firstTimestamp: firstSeen,
-                                tokens: {}
-                            });
-                        }
+						if (orderTimestamp - user.userStats.firstSeen > FIFTEEN_MINUTES) {
+							continue;
+						}
 
-                        const agg = acc.get(trader)!;
-                        agg.totalVol += usdcBig;
-                        agg.tradeCount += 1;
+						user.userStats.tradeVol += usdc;
+						user.userStats.tradeCount += 1;
+						user.userStats.lastSeen = Math.max(
+							user.userStats.lastSeen ?? orderTimestamp,
+							orderTimestamp,
+						);
 
-                        // Aggregate token-specific stats
-                        if (!agg.tokens[assetId]) {
-                            agg.tokens[assetId] = { vol: 0n, count: 0, firstTimestamp: timestamp };
-                        }
-                        agg.tokens[assetId].vol += usdcBig;
-                        agg.tokens[assetId].count += 1;
+						const existingToken = user.tokenstats[tokenId] as
+							| PositionStats
+							| undefined;
+						const tokenStats: PositionStats = existingToken ?? {
+							firstSeen: orderTimestamp,
+							lastSeen: orderTimestamp,
+							volume: 0,
+							trades: 0,
+							sumPrice: 0,
+							sumPriceSq: 0,
+						};
 
-                        return acc;
-                    }, new Map<string, any>());
+						tokenStats.firstSeen = Math.min(
+							tokenStats.firstSeen,
+							orderTimestamp,
+						);
+						tokenStats.lastSeen = Math.max(tokenStats.lastSeen, orderTimestamp);
+						tokenStats.volume += volume;
+						tokenStats.trades += 1;
+						tokenStats.sumPrice += price;
+						tokenStats.sumPriceSq += price * price;
+						user.tokenstats[tokenId] = tokenStats;
 
-                    // --- 2. APPLY TO CACHE: Update the windowBuffer ---
-                    for (const [trader, aggData] of reducedPositions.entries()) {
-                        let user = this.windowBuffer.get(trader);
-                        const isNewUser = !user;
+						if (
+							latestTimestamp - user.userStats.firstSeen <= FIFTEEN_MINUTES &&
+							user.userStats.tradeVol >= VOLUME_THRESHOLD
+						) {
+							this.markInsider(
+								accountHash,
+								user,
+								user.userStats.lastSeen ?? latestTimestamp,
+							);
+						}
+					}
 
-                        // Create new user in the buffer if they don't exist
-                        if (isNewUser) {
-                            user = {
-                                id: trader,
-                                tokenstats: {},
-                                userStats: {
-                                    tradeVol: 0n,
-                                    tradeCount: 0,
-                                    firstSeen: aggData.firstTimestamp
-                                }
-                            };
-                            // This triggers the overridden set() and pushes to the Min-Heap
-                            this.windowBuffer.set(trader, user);
-                        }
+					this.flushExpiredTraders(latestTimestamp);
+				} catch (batchErr) {
+					console.error("[PolymarketPipe] Batch processing error:", batchErr);
+					logger.error(batchErr, "Batch processing error, continuing...");
+				}
 
-                        // Apply the reduced volume and counts
-                        user.userStats.tradeVol += aggData.totalVol;
-                        user.userStats.tradeCount += aggData.tradeCount;
+				const cursor = batch?.ctx?.state?.current;
+				if (cursor) {
+					this.persistor.onBatchProcessed({
+						insiderDetector: this.insiderDetector.getDetector(),
+						notInsiderDetector: this.notInsiderDetector.getDetector(),
+						insiderCount: this.insiderCount,
+						notInsiderCount: this.notInsiderCount,
+						cursor,
+					});
+				}
 
-                        // Apply the reduced token stats
-                        for (const [assetId, tokenData] of Object.entries(aggData.tokens) as any) {
-                            if (!user.tokenstats[assetId]) {
-                                user.tokenstats[assetId] = {
-                                    tradeVol: 0n,
-                                    tradeCount: 0,
-                                    firstSeen: tokenData.firstTimestamp
-                                };
-                            }
-                            user.tokenstats[assetId].tradeVol += tokenData.vol as bigint;
-                            user.tokenstats[assetId].tradeCount += tokenData.count as number;
-                        }
+				this.marketStatsPersistor.onBatchProcessed();
+			}
+		} catch (err) {
+			logger.error(err, "Pipeline write failed");
+			console.error("[PolymarketPipe] Pipeline error (non-fatal):", err);
+		} finally {
+			await Promise.all([
+				this.insiderPositionsPersistor.flush(),
+				this.marketStatsPersistor.flush(),
+				this.accountAddressMapPersistor.flush(),
+			]);
+		}
+	}
 
-                        // --- 3. IMMEDIATE INSIDER DETECTION ---
-                        const isFirstSeenRecently = latestTimestamp - user.userStats.firstSeen <= FIFTEEN_MINUTES;
-                        const meetsVolumeThreshold = user.userStats.tradeVol >= VOLUME_THRESHOLD;
+	async fork(previousBlocks: BlockCursor[]): Promise<BlockCursor | null> {
+		console.warn(
+			`Chain reorg: Removing data for ${previousBlocks.length} blocks`,
+		);
+		return null;
+	}
 
-                        if (isFirstSeenRecently && meetsVolumeThreshold) {
-                            this.insiderDetector.add(trader);
-                            this.insiderCount++;
-                            console.log(`[ALERT] Insider detected: ${trader} | Vol: ${user.userStats.tradeVol}`);
+	private flushExpiredTraders(currentTimestamp: number) {
+		if (!currentTimestamp || Number.isNaN(currentTimestamp)) return;
 
-                            // 🔥 Remove them from the buffer so they aren't flushed later
-                            this.windowBuffer.delete(trader);
-                        }
-                    }
+		const flushedData = this.aggPositions.flush(currentTimestamp);
+		for (const [accountHashRaw, stats] of Object.entries(flushedData)) {
+			const parsedAccountHash = Number.parseInt(accountHashRaw, 10);
+			if (!Number.isFinite(parsedAccountHash)) {
+				continue;
+			}
+			const accountHash = parsedAccountHash | 0;
 
+			if (
+				this.insiderDetector.has(accountHash) ||
+				this.notInsiderDetector.has(accountHash)
+			) {
+				continue;
+			}
 
-                } catch (batchErr) {
-                    console.error("[Target] Batch processing error:", batchErr);
-                    logger.error(batchErr, "Batch processing error, continuing...");
-                }
-                const flushedData = this.windowBuffer.flush(latestTimestamp);
-                this.evaluator.evaluate(flushedData);
+			if (stats.userStats.tradeVol >= VOLUME_THRESHOLD) {
+				this.markInsider(
+					accountHash,
+					stats,
+					stats.userStats.lastSeen ?? currentTimestamp,
+				);
+				continue;
+			}
 
-                // Track batch processing and save detector snapshot if threshold reached
-                // Cursor will be saved via callback only after detectors are written
-                this.persistor.onBatchProcessed({
-                    insiderDetector: this.insiderDetector.getDetector(),
-                    notInsiderDetector: this.notInsiderDetector.getDetector(),
-                    insiderCount: this.insiderCount,
-                    notInsiderCount: this.notInsiderCount,
-                    cursor: batch.ctx.state.current,
-                });
+			if (stats.wallet) {
+				this.accountAddressMapPersistor.enqueue({
+					accountHash,
+					walletAddress: stats.wallet,
+					seenAt: stats.userStats.lastSeen ?? currentTimestamp,
+				});
+			}
 
+			this.notInsiderDetector.add(accountHash);
+			this.notInsiderCount++;
+		}
+	}
 
+	private markInsider(
+		accountHash: number,
+		stats: TraderData,
+		detectedAt: number,
+	) {
+		const accountKey = String(accountHash);
+		if (this.insiderDetector.has(accountHash)) {
+			this.aggPositions.delete(accountKey);
+			return;
+		}
 
-            }
-        } catch (err) {
-            logger.error(err, "Pipeline write failed");
-            console.error("[Target] Pipeline error (non-fatal):", err);
-        }
-    }
+		this.insiderDetector.add(accountHash);
+		this.insiderCount++;
+		if (stats.wallet) {
+			this.accountAddressMapPersistor.enqueue({
+				accountHash,
+				walletAddress: stats.wallet,
+				seenAt: detectedAt,
+			});
+		}
+		this.enqueueInsiderPositions(accountHash, stats, detectedAt);
+		this.aggPositions.delete(accountKey);
 
-    async fork(previousBlocks: BlockCursor[]): Promise<BlockCursor | null> {
-        console.warn(`Chain reorg: Removing data for ${previousBlocks.length} blocks`);
-        // If needed, you can handle rollback logic here, but returning null 
-        // usually signals the indexer to handle it.
-        return null;
-    }
+		const walletAddress = stats.wallet?.toLowerCase() ?? "unknown";
+		console.log(
+			`[ALERT] Insider detected: hash=${accountHash} u32=${accountHash >>> 0} address=${walletAddress} | Vol: ${stats.userStats.tradeVol.toString()}`,
+		);
+	}
 
-    private async loadCursorFromState(): Promise<void> {
-        if (await this.stateFile.exists()) {
-            try {
-                const content = await this.stateFile.text();
-                try {
-                    const cursor = JSON.parse(content);
-                    if (typeof cursor === "number") {
-                        this.cursor = { number: cursor };
-                    } else if (
-                        cursor &&
-                        typeof cursor === "object" &&
-                        typeof cursor.number === "number"
-                    ) {
-                        this.cursor = cursor as BlockCursor;
-                    }
-                } catch {
-                    const num = parseInt(content.trim(), 10);
-                    if (!Number.isNaN(num)) {
-                        this.cursor = { number: num };
-                    }
-                }
-                if (this.cursor) {
-                    console.log(`[PolymarketPipe] 📍 Loaded cursor from state.json: block ${this.cursor.number}`);
-                }
-            } catch (e) {
-                console.warn("Failed to read cursor from state.json:", e);
-            }
-        }
-    }
+	private enqueueInsiderPositions(
+		accountHash: number,
+		stats: TraderData,
+		detectedAt: number,
+	) {
+		const positions: Record<string, PositionStats> = {};
+		for (const [tokenId, tokenStats] of Object.entries(stats.tokenstats)) {
+			const typed = tokenStats as PositionStats;
+			if (!typed || typed.trades <= 0) continue;
+			positions[tokenId] = {
+				firstSeen: typed.firstSeen,
+				lastSeen: typed.lastSeen,
+				volume: typed.volume,
+				trades: typed.trades,
+				sumPrice: typed.sumPrice,
+				sumPriceSq: typed.sumPriceSq,
+			};
+		}
 
-    private async getCursor(): Promise<BlockCursor | undefined> {
-        if (!this.cursor) {
-            this.loadCursorFromState()
-        }
-        return this.cursor;
-    }
+		this.insiderPositionsPersistor.enqueue({
+			accountHash,
+			detectedAt,
+			positions,
+		});
+	}
 
-    private async saveCursor(cursor: BlockCursor) {
-        this.cursor = cursor;
-        await Bun.write(this.stateFile, JSON.stringify(cursor));
-    }
+	private async loadCursorFromState(): Promise<void> {
+		if (await this.stateFile.exists()) {
+			try {
+				const content = await this.stateFile.text();
+				try {
+					const cursor = JSON.parse(content);
+					if (typeof cursor === "number") {
+						this.cursor = { number: cursor };
+					} else if (
+						cursor &&
+						typeof cursor === "object" &&
+						typeof cursor.number === "number"
+					) {
+						this.cursor = cursor as BlockCursor;
+					}
+				} catch {
+					const num = Number.parseInt(content.trim(), 10);
+					if (!Number.isNaN(num)) {
+						this.cursor = { number: num };
+					}
+				}
+				if (this.cursor) {
+					if (this.cursor.number < START_BLOCK) {
+						this.cursor = { ...this.cursor, number: START_BLOCK };
+					}
+					console.log(
+						`[PolymarketPipe] 📍 Loaded cursor from state.json: block ${this.cursor.number}`,
+					);
+				}
+			} catch (error) {
+				console.warn("Failed to read cursor from state.json:", error);
+			}
+		}
+	}
+
+	private async getCursor(): Promise<BlockCursor | undefined> {
+		if (!this.cursor) {
+			await this.loadCursorFromState();
+		}
+		return this.cursor;
+	}
+
+	private async saveCursor(cursor: BlockCursor) {
+		this.cursor = cursor;
+		await Bun.write(this.stateFile, JSON.stringify(cursor));
+	}
 }

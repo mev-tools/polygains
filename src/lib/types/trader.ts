@@ -1,7 +1,9 @@
+import type { PositionStats } from "./positions";
+
 export interface TraderData {
 	id: string;
 	wallet?: string;
-	tokenstats: Record<string, any>;
+	tokenstats: Record<string, PositionStats>;
 	userStats: {
 		tradeVol: bigint;
 		tradeCount: number;

@@ -15,7 +15,7 @@ async function cleanupFixtures(params: {
 	conditionId: string;
 	tokenIds: string[];
 	positionId: string;
-	accountHash: string;
+	accountHash: number;
 }) {
 	await db
 		.delete(insiderPositions)
@@ -40,7 +40,7 @@ describe("Insider outcome resolution", () => {
 		const yesTokenId = `7001${suffix}`;
 		const noTokenId = `7002${suffix}`;
 		const tokenIds = [yesTokenId, noTokenId];
-		const accountHash = `it-account-${suffix}`;
+		const accountHash = Bun.hash.xxHash32(`it-account-${suffix}`) | 0;
 		const positionId = `${accountHash}-${yesTokenId}`;
 		const nowMs = Date.now();
 		const detectedAt = nowMs + 5_000_000_000;
@@ -171,7 +171,7 @@ describe("Insider outcome resolution", () => {
 		const yesTokenId = `7101${suffix}`;
 		const noTokenId = `7102${suffix}`;
 		const tokenIds = [yesTokenId, noTokenId];
-		const accountHash = `it-account-unknown-${suffix}`;
+		const accountHash = Bun.hash.xxHash32(`it-account-unknown-${suffix}`) | 0;
 		const positionId = `${accountHash}-${yesTokenId}`;
 		const nowMs = Date.now();
 		const detectedAt = nowMs + 5_100_000_000;

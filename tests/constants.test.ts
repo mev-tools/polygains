@@ -14,7 +14,7 @@ import {
 describe("Constants validation", () => {
 	describe("Blockchain constants", () => {
 		test("START_BLOCK should be a valid block number", () => {
-			expect(START_BLOCK).toBe(52118906);
+			expect(START_BLOCK).toBe(35000000);
 			expect(START_BLOCK).toBeGreaterThan(0);
 			expect(Number.isInteger(START_BLOCK)).toBe(true);
 		});

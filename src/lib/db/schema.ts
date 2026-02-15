@@ -101,6 +101,44 @@ export const detectedInsiders = pgTable(
 	(table) => [index("idx_insiders_vol").on(table.volume)],
 );
 
+// Persisted insider positions (hashed account key only)
+export const insiderPositions = pgTable(
+	"insider_positions",
+	{
+		id: text("id").primaryKey(), // `${accountHash}-${tokenId}`
+		accountHash: integer("account_hash").notNull(),
+		tokenId: numeric("token_id", { precision: 78, scale: 0 }).notNull(),
+		totalVolume: real("total_volume").notNull().default(0),
+		tradeCount: integer("trade_count").notNull().default(0),
+		avgPrice: real("avg_price").notNull().default(0),
+		sumPrice: real("sum_price").notNull().default(0),
+		sumPriceSq: real("sum_price_sq").notNull().default(0),
+		firstSeen: bigint("first_seen", { mode: "number" }),
+		lastSeen: bigint("last_seen", { mode: "number" }),
+		detectedAt: bigint("detected_at", { mode: "number" }),
+	},
+	(table) => [
+		index("idx_insider_positions_account").on(table.accountHash),
+		index("idx_insider_positions_token").on(table.tokenId),
+		index("idx_insider_positions_detected").on(table.detectedAt),
+	],
+);
+
+// Hash -> wallet address mapping (persisted on eviction/classification)
+export const accountWalletMap = pgTable(
+	"account_wallet_map",
+	{
+		accountHash: integer("account_hash").primaryKey(),
+		walletAddress: text("wallet_address").notNull(),
+		firstSeen: bigint("first_seen", { mode: "number" }),
+		lastSeen: bigint("last_seen", { mode: "number" }),
+	},
+	(table) => [
+		index("idx_account_wallet_wallet").on(table.walletAddress),
+		index("idx_account_wallet_last_seen").on(table.lastSeen),
+	],
+);
+
 // Token statistics
 export const tokenStats = pgTable(
 	"token_stats",
@@ -111,6 +149,8 @@ export const tokenStats = pgTable(
 		totalInsiders: integer("total_insiders").default(0),
 		totalInsidersVol: real("total_insiders_vol").default(0),
 		lastPrice: real("last_price").default(0),
+		sumPrice: real("sum_price").default(0),
+		sumPriceSq: real("sum_price_sq").default(0),
 		mean: real("mean").default(0),
 		stdDev: real("std_dev").default(0),
 		p95: real("p95").default(0),
@@ -129,20 +169,32 @@ export const tokenMarketLookup = pgTable(
 		conditionId: text("condition_id"),
 		createdAt: bigint("created_at", { mode: "number" }),
 	},
-	(table) => [index("idx_token_lookup_condition").on(table.conditionId)],
+	(table) => [
+		index("idx_token_lookup_condition").on(table.conditionId),
+		index("idx_token_lookup_condition_token").on(
+			table.conditionId,
+			table.tokenId,
+		),
+	],
 );
 
 // Polymarket markets info
-export const markets = pgTable("markets", {
-	conditionId: text("conditionId").primaryKey(),
-	question: text("question").notNull(),
-	description: text("description"),
-	outcomeTags: text("outcomeTags"),
-	slug: text("slug"),
-	active: boolean("active").default(true),
-	closed: boolean("closed").default(false),
-	updatedAt: bigint("updatedAt", { mode: "number" }),
-});
+export const markets = pgTable(
+	"markets",
+	{
+		conditionId: text("conditionId").primaryKey(),
+		question: text("question").notNull(),
+		description: text("description"),
+		outcomeTags: text("outcomeTags"),
+		slug: text("slug"),
+		active: boolean("active").default(true),
+		closed: boolean("closed").default(false),
+		updatedAt: bigint("updatedAt", { mode: "number" }),
+	},
+	(table) => [
+		index("idx_markets_closed_condition").on(table.closed, table.conditionId),
+	],
+);
 
 // Exploded market tokens (outcomes)
 export const marketTokens = pgTable(
@@ -157,6 +209,11 @@ export const marketTokens = pgTable(
 	},
 	(table) => [
 		index("idx_market_tokens_condition").on(table.marketConditionId),
+		index("idx_market_tokens_condition_winner_token").on(
+			table.marketConditionId,
+			table.winner,
+			table.tokenId,
+		),
 		foreignKey({
 			columns: [table.marketConditionId],
 			foreignColumns: [markets.conditionId],
@@ -220,11 +277,11 @@ export const vTokenStatsEnriched = pgView("v_token_stats_enriched").as((qb) =>
 export const vInsidersEnriched = pgView("v_insiders_enriched").as((qb) =>
 	qb
 		.select({
-			account: detectedInsiders.account,
-			detectedAt: detectedInsiders.detectedAt,
-			volume: detectedInsiders.volume,
-			tokenId: detectedInsiders.tokenId,
-			alertPrice: detectedInsiders.alertPrice,
+			account: insiderPositions.accountHash,
+			detectedAt: insiderPositions.detectedAt,
+			volume: insiderPositions.totalVolume,
+			tokenId: insiderPositions.tokenId,
+			alertPrice: insiderPositions.avgPrice,
 			outcome: marketTokens.outcome,
 			marketCount: sql<number>`1`.as("market_count"),
 			conditionId: tokenMarketLookup.conditionId,
@@ -235,14 +292,14 @@ export const vInsidersEnriched = pgView("v_insiders_enriched").as((qb) =>
 			winner: marketTokens.winner,
 			closed: markets.closed,
 		})
-		.from(detectedInsiders)
+		.from(insiderPositions)
 		.leftJoin(
 			tokenMarketLookup,
-			eq(detectedInsiders.tokenId, tokenMarketLookup.tokenId),
+			eq(insiderPositions.tokenId, tokenMarketLookup.tokenId),
 		)
 		.leftJoin(markets, eq(tokenMarketLookup.conditionId, markets.conditionId))
-		.leftJoin(marketTokens, eq(detectedInsiders.tokenId, marketTokens.tokenId))
-		.leftJoin(tokenStats, eq(detectedInsiders.tokenId, tokenStats.token)),
+		.leftJoin(marketTokens, eq(insiderPositions.tokenId, marketTokens.tokenId))
+		.leftJoin(tokenStats, eq(insiderPositions.tokenId, tokenStats.token)),
 );
 
 // Views - Market Summary
@@ -308,6 +365,16 @@ export const detectedInsidersRelations = relations(
 	({ one }) => ({
 		tokenLookup: one(tokenMarketLookup, {
 			fields: [detectedInsiders.tokenId],
+			references: [tokenMarketLookup.tokenId],
+		}),
+	}),
+);
+
+export const insiderPositionsRelations = relations(
+	insiderPositions,
+	({ one }) => ({
+		tokenLookup: one(tokenMarketLookup, {
+			fields: [insiderPositions.tokenId],
 			references: [tokenMarketLookup.tokenId],
 		}),
 	}),

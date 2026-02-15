@@ -35,10 +35,15 @@ while true; do
   fi
 
   echo "[frontend-build-watcher] Change detected. Building frontend..."
-  (
+  if (
     cd "${FRONTEND_DIR}"
     bun run build --outdir=../public
-  )
-  echo "[frontend-build-watcher] Build complete."
+  ); then
+    echo "[frontend-build-watcher] Build complete."
+  else
+    echo "[frontend-build-watcher] Build failed; waiting for next source change."
+    last_snapshot="${current_snapshot}"
+    continue
+  fi
   last_snapshot="$(snapshot || true)"
 done

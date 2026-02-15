@@ -1,125 +1,120 @@
 import { Heap } from "heap-js";
 import { FIFTEEN_MINUTES, VOLUME_THRESHOLD } from "@/lib/const";
-import { InsiderDetector } from "./insider";
-import { NotInsiderDetector } from "./notinsider";
-
-export interface TraderData {
-    id: string;
-    tokenstats: Record<string, any>;
-    userStats: {
-        tradeVol: bigint;
-        tradeCount: number;
-        firstSeen: number;
-    };
-}
+import type { TraderData, WindowBufferItem } from "@/lib/types";
+import type { InsiderDetector, NotInsiderDetector } from "./detector-v2";
 
 // --- 1. Optimized Window Buffer ---
-export class WindowBuffer<T> extends Map<string, T> {
-    private minHeap: Heap<T>;
-    private getTimestamp: (item: T) => number;
-    private getId: (item: T) => string;
-    private deletedKeys = new Set<string>();
+export class WindowBuffer<T extends WindowBufferItem> extends Map<string, T> {
+	private minHeap: Heap<T>;
+	private getTimestamp: (item: T) => number;
+	private getId: (item: T) => string;
+	private deletedKeys = new Set<string>();
 
-    constructor(
-        private windowSize = FIFTEEN_MINUTES,
-        getTimestamp?: (item: T) => number,
-        getId?: (item: T) => string
-    ) {
-        super();
+	constructor(
+		private windowSize = FIFTEEN_MINUTES,
+		getTimestamp?: (item: T) => number,
+		getId?: (item: T) => string,
+	) {
+		super();
 
-        this.getTimestamp = getTimestamp ?? ((item: any) => item.userStats.firstSeen);
-        this.getId = getId ?? ((item: any) => item.id);
+		this.getTimestamp = getTimestamp ?? ((item: T) => item.userStats.firstSeen);
+		this.getId = getId ?? ((item: T) => item.id);
 
-        this.minHeap = new Heap((a, b) => this.getTimestamp(a) - this.getTimestamp(b));
-        this.minHeap.init([]);
-    }
+		this.minHeap = new Heap(
+			(a, b) => this.getTimestamp(a) - this.getTimestamp(b),
+		);
+		this.minHeap.init([]);
+	}
 
-    override set(key: string, value: T): this {
-        if (!this.has(key)) {
-            this.minHeap.push(value);
-        }
+	override set(key: string, value: T): this {
+		if (!this.has(key)) {
+			this.minHeap.push(value);
+		}
 
-        this.deletedKeys.delete(key);
-        super.set(key, value);
-        return this;
-    }
+		this.deletedKeys.delete(key);
+		super.set(key, value);
+		return this;
+	}
 
-    override delete(key: string): boolean {
-        const existed = super.delete(key);
-        if (existed) {
-            this.deletedKeys.add(key);
-        }
-        return existed;
-    }
+	override delete(key: string): boolean {
+		const existed = super.delete(key);
+		if (existed) {
+			this.deletedKeys.add(key);
+		}
+		return existed;
+	}
 
-    flush(currentTimestamp: number): Record<string, T> {
-        const flushed: Record<string, T> = {};
+	flush(currentTimestamp: number): Record<string, T> {
+		const flushed: Record<string, T> = {};
 
-        if (currentTimestamp === undefined || Number.isNaN(currentTimestamp)) {
-            return flushed;
-        }
+		if (currentTimestamp === undefined || Number.isNaN(currentTimestamp)) {
+			return flushed;
+		}
 
-        while (
-            this.minHeap.length > 0 &&
-            currentTimestamp - this.getTimestamp(this.minHeap.peek() as T) >= this.windowSize
-        ) {
-            const expiredItem = this.minHeap.pop() as T;
-            const key = this.getId(expiredItem);
+		while (
+			this.minHeap.length > 0 &&
+			currentTimestamp - this.getTimestamp(this.minHeap.peek() as T) >=
+				this.windowSize
+		) {
+			const expiredItem = this.minHeap.pop() as T;
+			const key = this.getId(expiredItem);
 
-            if (this.deletedKeys.has(key)) {
-                this.deletedKeys.delete(key);
-                continue;
-            }
+			if (this.deletedKeys.has(key)) {
+				this.deletedKeys.delete(key);
+				continue;
+			}
 
-            // Verify this is still the active item in the Map
-            // If it's not, it's a stale heap entry from a previous set() call
-            if (super.get(key) !== expiredItem) {
-                continue;
-            }
+			// Verify this is still the active item in the Map
+			// If it's not, it's a stale heap entry from a previous set() call
+			if (super.get(key) !== expiredItem) {
+				continue;
+			}
 
-            flushed[key] = expiredItem;
-            super.delete(key); 
-        }
+			flushed[key] = expiredItem;
+			super.delete(key);
+		}
 
-        return flushed;
-    }
+		return flushed;
+	}
 }
 
 export class InsiderEvaluator {
-    constructor(
-        private insiderDetector: InsiderDetector,
-        private notInsiderDetector: NotInsiderDetector,
-        private onInsiderDetected?: () => void,
-        private onNotInsiderDetected?: () => void
-    ) { }
+	constructor(
+		private insiderDetector: InsiderDetector,
+		private notInsiderDetector: NotInsiderDetector,
+		private onInsiderDetected?: () => void,
+		private onNotInsiderDetected?: () => void,
+	) {}
 
-    evaluate(flushedData: Record<string, TraderData>) {
-        const notInsidersToAdd = new Set<string>();
+	evaluate(flushedData: Record<string, TraderData>) {
+		const notInsidersToAdd = new Set<string>();
 
-        for (const [trader, stats] of Object.entries(flushedData)) {
-            if (this.notInsiderDetector.has(trader)) {
-                continue;
-            }
+		for (const [trader, stats] of Object.entries(flushedData)) {
+			if (this.notInsiderDetector.has(trader)) {
+				continue;
+			}
 
-            const meetsVolumeThreshold = stats.userStats.tradeVol >= VOLUME_THRESHOLD;
+			const meetsVolumeThreshold = stats.userStats.tradeVol >= VOLUME_THRESHOLD;
 
-            if (meetsVolumeThreshold) {
-                this.insiderDetector.add(trader);
-                console.log(`[ALERT] Insider detected: ${trader} | Vol: ${stats.userStats.tradeVol}`);
-                this.onInsiderDetected?.();
-            } else {
-                notInsidersToAdd.add(trader);
-            }
-        }
+			if (meetsVolumeThreshold) {
+				this.insiderDetector.add(trader);
+				console.log(
+					`[ALERT] Insider detected: ${trader} | Vol: ${stats.userStats.tradeVol}`,
+				);
+				this.onInsiderDetected?.();
+			} else {
+				notInsidersToAdd.add(trader);
+			}
+		}
 
-        if (notInsidersToAdd.size > 0) {
-            this.notInsiderDetector.addMany(notInsidersToAdd);
-            for (let i = 0; i < notInsidersToAdd.size; i++) {
-                this.onNotInsiderDetected?.();
-            }
-            console.log(
-                `[INFO] Added ${notInsidersToAdd.size} non-insiders to bloom filter`,
-            );
-        }
-    }
+		if (notInsidersToAdd.size > 0) {
+			this.notInsiderDetector.addMany(notInsidersToAdd);
+			for (let i = 0; i < notInsidersToAdd.size; i++) {
+				this.onNotInsiderDetected?.();
+			}
+			console.log(
+				`[INFO] Added ${notInsidersToAdd.size} non-insiders to bloom filter`,
+			);
+		}
+	}
 }

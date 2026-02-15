@@ -15,7 +15,7 @@ async function cleanupFixtures(params: {
 	conditionId: string;
 	tokenIds: string[];
 	positionIds: string[];
-	accountHashes: string[];
+	accountHashes: number[];
 }) {
 	if (params.positionIds.length > 0) {
 		await db
@@ -48,7 +48,7 @@ describe("Insider alert loss floor", () => {
 		const baseDetectedAt = nowMs + 6_000_000_000;
 		const accountHashes = Array.from(
 			{ length: 5 },
-			(_, i) => `it-loss-${suffix}-${i}`,
+			(_, i) => Bun.hash.xxHash32(`it-loss-${suffix}-${i}`) | 0,
 		);
 		const positionIds = accountHashes.map((accountHash, i) => {
 			const tokenId = i === 0 ? noTokenId : yesTokenId; // 1 loser, 4 winners

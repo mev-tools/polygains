@@ -39,9 +39,18 @@ const measure = async (fn: () => void | Promise<void>, label: string) => {
 	return elapsed;
 };
 
+interface Order {
+	trader: string;
+	usdc: bigint;
+	shares: bigint;
+	side: number;
+	timestamp: number;
+	assetId: string;
+}
+
 // Generate realistic order data
-function generateOrders(count: number, baseTimestamp: number) {
-	const orders = [];
+function generateOrders(count: number, baseTimestamp: number): Order[] {
+	const orders: Order[] = [];
 	for (let i = 0; i < count; i++) {
 		orders.push({
 			trader: `0x${Math.floor(Math.random() * 50000)

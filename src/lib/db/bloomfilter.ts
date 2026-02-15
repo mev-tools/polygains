@@ -1,16 +1,15 @@
-import { BloomFilter } from "bloomfilter";
-import { db } from "@/lib/db/init";
-import { bloomfilterSnapshots, detectorSnapshots } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 import type { BlockCursor } from "@subsquid/pipes";
-import { XXHash32Set } from "@/services/detector-v2";
+import { BloomFilter } from "bloomfilter";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/init";
+import type { XXHash32Set } from "@/lib/hashset";
+import { bloomfilterSnapshots, detectorSnapshots } from "@/lib/db/schema";
+import type { BloomFilterId } from "../types";
 
-export type BloomFilterId = "insider" | "notinsider";
-
-export interface BloomFilterSnapshot {
-	filter: BloomFilter;
-	itemCount: number;
-	cursor?: BlockCursor;
+export interface BloomFilterInternals {
+	buckets: Int32Array;
+	m: number;
+	k: number;
 }
 
 /**
@@ -23,9 +22,10 @@ export async function saveBloomFilter(
 	cursor?: BlockCursor,
 ) {
 	// Access the internal buckets array - BloomFilter stores data in an Int32Array
-	const buckets = (filter as any).buckets as Int32Array;
-	const bits = (filter as any).m as number;
-	const hashes = (filter as any).k as number;
+	const internals = filter as unknown as BloomFilterInternals;
+	const buckets = internals.buckets;
+	const bits = internals.m;
+	const hashes = internals.k;
 
 	// Convert Int32Array to Buffer for efficient binary storage
 	const buffer = Buffer.from(buckets.buffer);
@@ -90,7 +90,7 @@ export async function loadBloomFilter(
 	const filter = new BloomFilter(snapshot.bits, snapshot.hashes);
 
 	// Restore the internal state
-	(filter as any).buckets = buckets;
+	(filter as unknown as BloomFilterInternals).buckets = buckets;
 
 	// Reconstruct cursor if available
 	const cursor: BlockCursor | undefined = snapshot.blockNumber
@@ -143,13 +143,6 @@ export async function deleteBloomFilter(id: BloomFilterId) {
 // XXHash32Set Detector Functions (NEW - Incremental Snapshots)
 // =============================================================================
 
-export interface DetectorSnapshot {
-	dataSet: Set<number>;  // Main set with all hashes
-	unsaved: Set<number>;   // Empty after snapshot, contains new additions
-	itemCount: number;
-	cursor?: BlockCursor;
-}
-
 /**
  * Save a XXHash32Set detector snapshot to the database (INCREMENTAL)
  * Only saves hashes that were added since the last snapshot
@@ -157,18 +150,20 @@ export interface DetectorSnapshot {
 export async function saveDetector(
 	id: BloomFilterId,
 	detector: XXHash32Set,
-	itemCount = 0,
+	_itemCount = 0,
 	cursor?: BlockCursor,
 ) {
 	// INCREMENTAL: Only save unsaved hashes (tiny vs full set)
-	const unsavedHashes = Array.from(detector.getUnsavedSet());
+	const unsavedHashes = Array.from(detector.getUnsavedSet()).map(
+		(hash) => hash | 0,
+	);
 	const allHashCount = detector.size;
 
 	await db
 		.insert(detectorSnapshots)
 		.values({
 			id,
-			dataSet: unsavedHashes,  // Only unsaved!
+			dataSet: unsavedHashes, // Only unsaved!
 			unsavedCount: unsavedHashes.length,
 			itemCount: allHashCount,
 			updatedAt: Date.now(),
@@ -210,10 +205,12 @@ export async function loadDetector(
 	}
 
 	// Build Set by loading incremental snapshots from oldest to newest
-	const allSnapshots = await db.query.detectorSnapshots.findMany({
-		where: eq(detectorSnapshots.id, id),
-		orderBy: { updatedAt: "asc" },
-	});
+	// Use standard select to avoid relational query issues with bun-sql
+	const allSnapshots = await db
+		.select()
+		.from(detectorSnapshots)
+		.where(eq(detectorSnapshots.id, id))
+		.orderBy(detectorSnapshots.updatedAt);
 
 	const combinedSet = new Set<number>();
 
@@ -233,7 +230,7 @@ export async function loadDetector(
 
 	return {
 		dataSet: combinedSet,
-		unsaved: new Set(),  // Fresh load = no unsaved
+		unsaved: new Set(), // Fresh load = no unsaved
 		itemCount: snapshot.itemCount || 0,
 		cursor,
 	};

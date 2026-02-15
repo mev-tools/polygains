@@ -39,3 +39,5 @@ tmp/
 keys/
 .pgsocket
 chunk**.js
+
+**/public/chunk**

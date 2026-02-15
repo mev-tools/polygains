@@ -15,7 +15,7 @@ async function cleanupFixtures(params: {
 	conditionId: string;
 	tokenIds: string[];
 	positionIds: string[];
-	accountHashes: string[];
+	accountHashes: number[];
 }) {
 	if (params.positionIds.length > 0) {
 		await db
@@ -45,8 +45,8 @@ describe("Insider trigger price filter", () => {
 		const noTokenId = `9202${suffix}`;
 		const tokenIds = [yesTokenId, noTokenId];
 		const nowMs = Date.now();
-		const accountIncluded = `it-trigger-in-${suffix}`;
-		const accountExcluded = `it-trigger-out-${suffix}`;
+		const accountIncluded = Bun.hash.xxHash32(`it-trigger-in-${suffix}`) | 0;
+		const accountExcluded = Bun.hash.xxHash32(`it-trigger-out-${suffix}`) | 0;
 		const accountHashes = [accountIncluded, accountExcluded];
 		const includedPositionId = `${accountIncluded}-${yesTokenId}`;
 		const excludedPositionId = `${accountExcluded}-${noTokenId}`;
@@ -147,7 +147,7 @@ describe("Insider trigger price filter", () => {
 				(alert) =>
 					String(alert.conditionId) === conditionId &&
 					String(alert.tokenId) === yesTokenId &&
-					String(alert.user) === accountIncluded,
+					String(alert.user) === String(accountIncluded),
 			);
 			expect(includedAlert).toBeDefined();
 			expect(Number(includedAlert?.price ?? 0)).toBeCloseTo(0.94, 6);
@@ -181,8 +181,9 @@ describe("Insider trigger price filter", () => {
 		const noTokenId = `9302${suffix}`;
 		const tokenIds = [yesTokenId, noTokenId];
 		const nowMs = Date.now();
-		const accountBoundary = `it-trigger-boundary-${suffix}`;
-		const accountTooHigh = `it-trigger-high-${suffix}`;
+		const accountBoundary =
+			Bun.hash.xxHash32(`it-trigger-boundary-${suffix}`) | 0;
+		const accountTooHigh = Bun.hash.xxHash32(`it-trigger-high-${suffix}`) | 0;
 		const accountHashes = [accountBoundary, accountTooHigh];
 		const boundaryPositionId = `${accountBoundary}-${yesTokenId}`;
 		const highPositionId = `${accountTooHigh}-${noTokenId}`;
@@ -282,7 +283,7 @@ describe("Insider trigger price filter", () => {
 			const boundaryAlert = fixtureAlerts.find(
 				(alert) =>
 					String(alert.tokenId) === yesTokenId &&
-					String(alert.user) === accountBoundary,
+					String(alert.user) === String(accountBoundary),
 			);
 			expect(boundaryAlert).toBeDefined();
 			expect(Number(boundaryAlert?.price ?? 0)).toBeCloseTo(0.9500005, 6);

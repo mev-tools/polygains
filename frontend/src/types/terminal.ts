@@ -1,113 +1,87 @@
-export interface Pagination {
-  page: number;
-  totalPages: number;
-  total: number;
-  hasPrev: boolean;
-  hasNext: boolean;
-}
+import type {
+	AlertItem as SharedAlertItem,
+	AlertsResponse as SharedAlertsResponse,
+	GlobalStats as SharedGlobalStats,
+	HealthResponse as SharedHealthResponse,
+	InsiderStats as SharedInsiderStats,
+	InsiderTrade as SharedInsiderTrade,
+	MarketOutcome as SharedMarketOutcome,
+	MarketsResponse as SharedMarketsResponse,
+	Pagination as SharedPagination,
+} from "@shared/api";
 
-export interface AlertsResponse {
-  data: AlertItem[];
-  pagination: Pagination;
-}
-
-export interface MarketsResponse {
-  data: MarketOutcome[];
-  pagination: Pagination;
-}
-
-export interface HealthResponse {
-  status?: string;
-  current_block?: number | string;
-}
-
-export interface InsiderStats {
-  total_insiders?: number;
-  yes_insiders?: number;
-  no_insiders?: number;
-  total_volume?: number | string;
-  current_block?: number | string;
-}
-
-export interface GlobalStats {
-  total_accounts?: number;
-  total_markets?: number;
-  total_trades?: number;
-  active_positions?: number;
-}
-
-export interface AlertItem {
-  user: string;
-  volume: number | string;
-  outcome: string | number;
-  alert_time: number;
-  price: number | string;
-  closed?: boolean;
-  winner?: boolean | null;
-  conditionId?: string;
-  tokenId?: string;
-}
-
-export interface InsiderTrade {
-  position_id: string;
-  condition_id?: string;
-  question?: string;
-  volume: number | string;
-  outcome: string | number;
-  price: number | string;
-}
-
-export interface MarketOutcome {
-  conditionId: string;
-  question: string;
-  total_market_vol: number;
-  total_market_trades: number;
-  hn_score: number;
-  closed?: boolean;
-  outcome: string | number;
-  total_trades: number;
-  volume: number;
-  last_price: number;
-  mean?: number | null;
-  stdDev?: number | null;
-  p95?: number | null;
-  tokenId?: string;
-}
+export type Pagination = SharedPagination;
+export type AlertsResponse = SharedAlertsResponse;
+export type MarketsResponse = SharedMarketsResponse;
+export type HealthResponse = SharedHealthResponse;
+export type InsiderStats = SharedInsiderStats;
+export type GlobalStats = SharedGlobalStats;
+export type AlertItem = SharedAlertItem;
+export type InsiderTrade = SharedInsiderTrade;
+export type MarketOutcome = SharedMarketOutcome;
 
 export interface GroupedMarket {
-  conditionId: string;
-  question: string;
-  totalMarketVol: number;
-  totalMarketTrades: number;
-  hnScore: number;
-  closed: boolean;
-  outcomes: MarketOutcome[];
+	conditionId: string;
+	question: string;
+	closed: boolean;
+	outcomes: MarketOutcome[];
+	totalMarketVol?: number;
+	totalMarketTrades?: number;
+	hnScore?: number;
 }
 
-export const EMPTY_PAGINATION: Pagination = {
-  page: 1,
-  totalPages: 1,
-  total: 0,
-  hasPrev: false,
-  hasNext: false,
-};
-
 export interface TrackerState {
-  realizedPnL: number;
-  liveTotalBet: number;
-  liveTrades: number;
-  liveWins: number;
-  liveLosses: number;
-  openInterest: number;
+	totalBet: number;
+	openInterest: number;
+	realizedPnL: number;
+	liveTrades: number;
+	liveWins: number;
+	liveLosses: number;
+	alertsPage?: number;
+	alertsTotalPages?: number;
+	alertsFilledThroughPage?: number;
+	liveTotalBet: number;
 }
 
 export interface PendingAlert {
-  conditionId?: string;
-  tokenId?: string;
-  user: string;
-  alert_time: number;
-  outcome: string | number;
-  price: number;
-  cost: number;
-  mode: "reverse_insider" | "follow_insider";
+	id: string;
+	trader: string;
+	detectedAt: number;
+	volume: number;
+	outcome: string;
+	price: number;
+	marketQuestion: string;
+	cost: number;
+	mode: StrategyMode;
+	betSizing: BetSizing;
+	conditionId: string | null;
+	tokenId: string | null;
+	user: string;
+	alert_time: number;
 }
+
+export type StrategyMode = "reverse_insider" | "follow_insider";
+export type BetSizing = "target_payout" | "fixed_stake";
+export type WinnerFilter = "BOTH" | "WINNERS" | "LOSERS";
+
+export interface SyncState {
+	label: string;
+	healthy: boolean;
+	block: string;
+}
+
+export interface FloatingCash {
+	id: number;
+	text: string;
+	isLoss: boolean;
+	offset: number;
+}
+
+export const EMPTY_PAGINATION: Pagination = {
+	page: 1,
+	limit: 10,
+	total: 0,
+	totalPages: 0,
+	hasPrev: false,
+	hasNext: false,
+};

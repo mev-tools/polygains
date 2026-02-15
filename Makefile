@@ -23,13 +23,9 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "🗄️  Preparing database schema..."
 	@$(MAKE) db-prepare
 	@echo ""
-	@if [ ! -f "public/index.html" ]; then \
-		echo "🏗️  Building frontend to ./public ..."; \
-		cd frontend && bun install && bun run build --outdir=../public; \
-		echo "✅ Frontend built in ./public"; \
-	else \
-		echo "✅ Frontend already built (skip) - run 'make build-frontend' to rebuild"; \
-	fi
+	@echo "🏗️  Building frontend to ./public ..."
+	@cd frontend && bun install && bun run build --outdir=../public
+	@echo "✅ Frontend built in ./public"
 	@echo ""
 	@echo "🔧 Starting services with PM2..."
 	@bunx pm2 start ecosystem.config.cjs

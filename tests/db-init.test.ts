@@ -28,7 +28,7 @@ describe("Database initialization", () => {
 			const parsed = new URL(url);
 
 			expect(parsed.username).toBe("user");
-			expect(parsed.password).toBe("p@ss@word"); // URL decodes %40 to @
+			expect(parsed.password).toBe("p%40ss%40word"); // Bun keeps %40 as is in .password
 		});
 
 		test("should extract database name from pathname", () => {

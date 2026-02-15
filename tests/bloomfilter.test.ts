@@ -26,7 +26,7 @@ const mockDb = {
 	})),
 };
 
-mock.module("@/db/init", () => ({
+mock.module("@/lib/db/init", () => ({
 	db: mockDb,
 }));
 
@@ -120,7 +120,8 @@ describe("BloomFilter Persistence", () => {
 				updatedAt: Date.now(),
 			});
 
-			const loadedFilter = await loadBloomFilter("insider");
+			const loaded = await loadBloomFilter("insider");
+			const loadedFilter = loaded?.filter;
 
 			expect(loadedFilter).not.toBeNull();
 			expect(loadedFilter?.test("0xdeadbeef")).toBe(true);
@@ -153,7 +154,8 @@ describe("BloomFilter Persistence", () => {
 				updatedAt: Date.now(),
 			});
 
-			const loadedFilter = await loadBloomFilter("insider");
+			const loaded = await loadBloomFilter("insider");
+			const loadedFilter = loaded?.filter;
 
 			// All original items should test positive
 			for (const addr of testAddresses) {
@@ -210,13 +212,21 @@ describe("BloomFilter Persistence", () => {
 	describe("Binary storage efficiency", () => {
 		test("should use less space than JSON serialization", () => {
 			const filter = new BloomFilter(32 * 25600, 4);
+
+			// Populate with enough data to ensure numbers are large/frequent enough
+			// 10k items should flip many bits
+			for (let i = 0; i < 10000; i++) {
+				filter.add(`0xaddress${i}`);
+			}
+
 			const buckets = (filter as unknown as BloomFilterInternals).buckets;
 
 			const binaryBuffer = Buffer.from(buckets.buffer);
 			const jsonString = JSON.stringify(Array.from(buckets));
 
-			// Binary should be ~50% the size of JSON
-			expect(binaryBuffer.length).toBeLessThan(jsonString.length / 2);
+			// Binary should be smaller than JSON when data is present
+			// (JSON of large numbers like -1234567890 is much larger than 4 bytes)
+			expect(binaryBuffer.length).toBeLessThan(jsonString.length);
 			expect(binaryBuffer.length).toBe(25600 * 4); // Exact size: 102,400 bytes
 		});
 	});

@@ -1,14 +1,6 @@
-import { saveDetector } from "@/lib/db/bloomfilter";
 import type { BlockCursor } from "@subsquid/pipes";
-import { XXHash32Set } from "./detector-v2";
-
-interface PersistorTask {
-	insiderDetector: XXHash32Set;
-	notInsiderDetector: XXHash32Set;
-	insiderCount: number;
-	notInsiderCount: number;
-	cursor: BlockCursor;
-}
+import { saveDetector } from "@/lib/db/bloomfilter";
+import type { PersistorTask } from "@/lib/types";
 
 /**
  * Sequential queue for persisting XXHash32Set detector snapshots
@@ -22,7 +14,10 @@ export class BloomFilterPersistor {
 	private readonly SAVE_INTERVAL_BATCHES: number;
 	private onSavedCallback?: (cursor: BlockCursor) => Promise<void>;
 
-	constructor(saveIntervalBatches = 30, onSaved?: (cursor: BlockCursor) => Promise<void>) {
+	constructor(
+		saveIntervalBatches = 30,
+		onSaved?: (cursor: BlockCursor) => Promise<void>,
+	) {
 		// Default: save every 30 batches
 		this.SAVE_INTERVAL_BATCHES = saveIntervalBatches;
 		this.onSavedCallback = onSaved;
@@ -73,7 +68,9 @@ export class BloomFilterPersistor {
 
 		while (this.queue.length > 0) {
 			// Only process the LATEST snapshot, discard older ones
-			const task = this.queue.pop()!;
+			const task = this.queue.pop();
+			if (!task) break;
+
 			this.queue = []; // Clear queue - we only need the latest snapshot
 
 			try {

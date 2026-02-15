@@ -1,20 +1,20 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { BloomFilter } from "bloomfilter";
-import { BloomFilterPersistor } from "@/services/persistor";
-import { saveBloomFilter, loadBloomFilter, deleteBloomFilter } from "@/lib/db/bloomfilter";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { BlockCursor } from "@subsquid/pipes";
+import { BloomFilter } from "bloomfilter";
+import { deleteBloomFilter, loadBloomFilter } from "@/lib/db/bloomfilter";
+import { BloomFilterPersistor } from "@/services/persistor";
 
 describe("BloomFilterPersistor Integration Tests", () => {
 	// Clean up test snapshots before each test
 	beforeEach(async () => {
 		try {
 			await deleteBloomFilter("insider");
-		} catch (e) {
+		} catch (_e) {
 			// Ignore if doesn't exist
 		}
 		try {
 			await deleteBloomFilter("notinsider");
-		} catch (e) {
+		} catch (_e) {
 			// Ignore if doesn't exist
 		}
 	});
@@ -23,12 +23,12 @@ describe("BloomFilterPersistor Integration Tests", () => {
 	afterEach(async () => {
 		try {
 			await deleteBloomFilter("insider");
-		} catch (e) {
+		} catch (_e) {
 			// Ignore
 		}
 		try {
 			await deleteBloomFilter("notinsider");
-		} catch (e) {
+		} catch (_e) {
 			// Ignore
 		}
 	});
@@ -89,9 +89,9 @@ describe("BloomFilterPersistor Integration Tests", () => {
 
 		expect(loadedInsider).not.toBeNull();
 		expect(loadedNotInsider).not.toBeNull();
-		expect(loadedInsider!.filter.test("0xinsider1")).toBe(true);
-		expect(loadedNotInsider!.filter.test("0xnotinsider1")).toBe(true);
-		expect(loadedInsider!.cursor?.number).toBe(12345);
+		expect(loadedInsider?.filter.test("0xinsider1")).toBe(true);
+		expect(loadedNotInsider?.filter.test("0xnotinsider1")).toBe(true);
+		expect(loadedInsider?.cursor?.number).toBe(12345);
 	});
 
 	test("should respect batch interval - skip saves before threshold", async () => {
@@ -140,7 +140,7 @@ describe("BloomFilterPersistor Integration Tests", () => {
 		// Verify it was saved despite not reaching batch threshold
 		const loaded = await loadBloomFilter("insider");
 		expect(loaded).not.toBeNull();
-		expect(loaded!.filter.test("0xforced")).toBe(true);
+		expect(loaded?.filter.test("0xforced")).toBe(true);
 	});
 
 	test("should only persist latest snapshot, discarding queued older ones", async () => {
@@ -177,8 +177,8 @@ describe("BloomFilterPersistor Integration Tests", () => {
 		// Verify only the latest snapshot was persisted
 		const loaded = await loadBloomFilter("insider");
 		expect(loaded).not.toBeNull();
-		expect(loaded!.cursor?.number).toBe(300);
-		expect(loaded!.filter.test("0xaddr3")).toBe(true);
+		expect(loaded?.cursor?.number).toBe(300);
+		expect(loaded?.filter.test("0xaddr3")).toBe(true);
 	});
 
 	test("should persist cursor with bloomfilter", async () => {
@@ -206,10 +206,10 @@ describe("BloomFilterPersistor Integration Tests", () => {
 		// Verify cursor was saved with bloomfilter
 		const loaded = await loadBloomFilter("insider");
 		expect(loaded).not.toBeNull();
-		expect(loaded!.cursor).toBeDefined();
-		expect(loaded!.cursor!.number).toBe(999);
-		expect(loaded!.cursor!.hash).toBe("0xhash999");
-		expect(loaded!.cursor!.timestamp).toBe(1234567890);
+		expect(loaded?.cursor).toBeDefined();
+		expect(loaded?.cursor?.number).toBe(999);
+		expect(loaded?.cursor?.hash).toBe("0xhash999");
+		expect(loaded?.cursor?.timestamp).toBe(1234567890);
 	});
 
 	test("should save both insider and notinsider filters", async () => {
@@ -240,14 +240,14 @@ describe("BloomFilterPersistor Integration Tests", () => {
 		expect(loadedInsider).not.toBeNull();
 		expect(loadedNotInsider).not.toBeNull();
 
-		expect(loadedInsider!.filter.test("0xinsider")).toBe(true);
-		expect(loadedNotInsider!.filter.test("0xnotinsider")).toBe(true);
+		expect(loadedInsider?.filter.test("0xinsider")).toBe(true);
+		expect(loadedNotInsider?.filter.test("0xnotinsider")).toBe(true);
 
-		expect(loadedInsider!.itemCount).toBe(1);
-		expect(loadedNotInsider!.itemCount).toBe(1);
+		expect(loadedInsider?.itemCount).toBe(1);
+		expect(loadedNotInsider?.itemCount).toBe(1);
 
-		expect(loadedInsider!.cursor?.number).toBe(500);
-		expect(loadedNotInsider!.cursor?.number).toBe(500);
+		expect(loadedInsider?.cursor?.number).toBe(500);
+		expect(loadedNotInsider?.cursor?.number).toBe(500);
 	});
 
 	test("should track batch count correctly", async () => {

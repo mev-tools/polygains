@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:18
-    container_name: postgres_db
     env_file:
       - compose.env.local
     restart: always
@@ -17,12 +16,12 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     # TCP port bound to localhost only (not public)
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5469}:5432"
     shm_size: '1gb'
     volumes:
       - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - postgres_data:/var/lib/postgresql/data
-      - postgres_socket:/var/run/postgresql
+      - ./.pgsocket:/var/run/postgresql
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
@@ -34,4 +33,3 @@ services:
 
 volumes:
   postgres_data:
-  postgres_socket:

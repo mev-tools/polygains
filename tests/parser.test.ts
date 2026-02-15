@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { parseOrder } from "@/lib/parser";
-import { EVENT, SIDE } from "@/lib/models";
+import { EVENT, SIDE } from "@/lib/types";
 
 describe("parseOrder", () => {
 	describe("Buy orders", () => {

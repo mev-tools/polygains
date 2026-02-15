@@ -2,7 +2,7 @@ import { TerminalPage } from "./pages/TerminalPage";
 import "./index.css";
 
 export function App() {
-  return <TerminalPage />;
+	return <TerminalPage />;
 }
 
 export default App;

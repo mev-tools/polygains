@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("Database initialization", () => {
 	describe("Connection string parsing", () => {
@@ -60,7 +60,8 @@ describe("Database initialization", () => {
 		});
 
 		test("should have default DATABASE_URL fallback", () => {
-			const defaultUrl = "postgresql://postgres:postgres@localhost:5432/postgres";
+			const defaultUrl =
+				"postgresql://postgres:postgres@localhost:5432/postgres";
 			const parsed = new URL(defaultUrl);
 
 			expect(parsed.username).toBe("postgres");
@@ -150,7 +151,7 @@ describe("Database initialization", () => {
 			const baseDelay = 1000;
 			const attempts = [1, 2, 3, 4, 5];
 
-			const delays = attempts.map((attempt) => baseDelay * Math.pow(2, attempt - 1));
+			const delays = attempts.map((attempt) => baseDelay * 2 ** (attempt - 1));
 
 			// Exponential: 1s, 2s, 4s, 8s, 16s
 			expect(delays).toEqual([1000, 2000, 4000, 8000, 16000]);

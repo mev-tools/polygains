@@ -1,15 +1,17 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { BloomFilter } from "bloomfilter";
+import type { BloomFilterInternals } from "@/lib/db/bloomfilter";
 import { InsiderDetector } from "@/services/insider";
 import { NotInsiderDetector } from "@/services/notinsider";
 
 describe("InsiderDetector", () => {
 	test("should initialize with correct bloom filter parameters", () => {
 		const detector = new InsiderDetector();
-		const filter = (detector as any).filter;
+		const filter = (detector as unknown as { filter: BloomFilter }).filter;
 
 		// Verify configuration matches constants
-		expect((filter as any).m).toBe(32 * 25600); // 819,200 bits
-		expect((filter as any).k).toBe(4); // 4 hash functions
+		expect((filter as unknown as BloomFilterInternals).m).toBe(32 * 25600); // 819,200 bits
+		expect((filter as unknown as BloomFilterInternals).k).toBe(4); // 4 hash functions
 	});
 
 	test("should add and detect addresses", () => {
@@ -32,12 +34,14 @@ describe("InsiderDetector", () => {
 			"0xdddddddddddddddddddddddddddddddddddddddd",
 		];
 
-		addresses.forEach((addr) => detector.add(addr));
+		for (const addr of addresses) {
+			detector.add(addr);
+		}
 
 		// All added addresses should be detected
-		addresses.forEach((addr) => {
+		for (const addr of addresses) {
 			expect(detector.has(addr)).toBe(true);
-		});
+		}
 
 		// Random address should not be detected (with high probability)
 		const randomAddress = "0x9999999999999999999999999999999999999999";
@@ -94,12 +98,18 @@ describe("NotInsiderDetector", () => {
 		const notInsider = new NotInsiderDetector();
 		const insider = new InsiderDetector();
 
-		const notInsiderFilter = (notInsider as any).filter;
-		const insiderFilter = (insider as any).filter;
+		const notInsiderFilter = (notInsider as unknown as { filter: BloomFilter })
+			.filter;
+		const insiderFilter = (insider as unknown as { filter: BloomFilter })
+			.filter;
 
 		// Both should use same configuration
-		expect((notInsiderFilter as any).m).toBe((insiderFilter as any).m);
-		expect((notInsiderFilter as any).k).toBe((insiderFilter as any).k);
+		expect((notInsiderFilter as unknown as BloomFilterInternals).m).toBe(
+			(insiderFilter as unknown as BloomFilterInternals).m,
+		);
+		expect((notInsiderFilter as unknown as BloomFilterInternals).k).toBe(
+			(insiderFilter as unknown as BloomFilterInternals).k,
+		);
 	});
 
 	test("should maintain separate state from InsiderDetector", () => {
@@ -126,11 +136,13 @@ describe("NotInsiderDetector", () => {
 			"0x3000000000000000000000000000000000000003",
 		];
 
-		regularTraders.forEach((addr) => notInsider.add(addr));
+		for (const addr of regularTraders) {
+			notInsider.add(addr);
+		}
 
-		regularTraders.forEach((addr) => {
+		for (const addr of regularTraders) {
 			expect(notInsider.has(addr)).toBe(true);
-		});
+		}
 	});
 
 	test("should support batch insertion for non-insiders", () => {
@@ -143,9 +155,9 @@ describe("NotInsiderDetector", () => {
 
 		notInsider.addMany(addresses);
 
-		addresses.forEach((addr) => {
+		for (const addr of addresses) {
 			expect(notInsider.has(addr)).toBe(true);
-		});
+		}
 	});
 });
 
@@ -154,27 +166,33 @@ describe("Bloom Filter Collision Handling", () => {
 		const insider = new InsiderDetector();
 		const notInsider = new NotInsiderDetector();
 
-		const insiderAddresses = Array.from({ length: 100 }, (_, i) =>
-			`0xa${i.toString(16).padStart(39, "0")}`,
+		const insiderAddresses = Array.from(
+			{ length: 100 },
+			(_, i) => `0xa${i.toString(16).padStart(39, "0")}`,
 		);
 
-		const notInsiderAddresses = Array.from({ length: 100 }, (_, i) =>
-			`0xb${i.toString(16).padStart(39, "0")}`,
+		const notInsiderAddresses = Array.from(
+			{ length: 100 },
+			(_, i) => `0xb${i.toString(16).padStart(39, "0")}`,
 		);
 
-		insiderAddresses.forEach((addr) => insider.add(addr));
-		notInsiderAddresses.forEach((addr) => notInsider.add(addr));
+		for (const addr of insiderAddresses) {
+			insider.add(addr);
+		}
+		for (const addr of notInsiderAddresses) {
+			notInsider.add(addr);
+		}
 
 		// Verify isolation
-		insiderAddresses.forEach((addr) => {
+		for (const addr of insiderAddresses) {
 			expect(insider.has(addr)).toBe(true);
 			expect(notInsider.has(addr)).toBe(false);
-		});
+		}
 
-		notInsiderAddresses.forEach((addr) => {
+		for (const addr of notInsiderAddresses) {
 			expect(notInsider.has(addr)).toBe(true);
 			expect(insider.has(addr)).toBe(false);
-		});
+		}
 	});
 });
 

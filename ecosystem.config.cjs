@@ -1,43 +1,59 @@
+const path = require("node:path");
+
+const commonApp = {
+	env_file: path.join(__dirname, ".env"),
+	autorestart: true,
+	stop_exit_codes: [0],
+	min_uptime: "10s",
+	max_restarts: 50,
+	restart_delay: 5000,
+	exp_backoff_restart_delay: 100,
+	watch: false,
+};
+
 module.exports = {
-  apps: [
-    {
-      name: 'api-server',
-      script: 'bun',
-      args: '--watch src/services/server.ts',
-      cwd: __dirname,
-      env: {
-        PORT: 4000,
-        NODE_ENV: 'development',
-      },
-    },
-    {
-      name: 'markets',
-      script: 'bun',
-      args: '--watch src/services/markets.ts',
-      cwd: __dirname,
-      env: {
-        FETCH_INTERVAL_MS: 3600000,
-        NODE_ENV: 'development',
-      },
-    },
-    {
-      name: 'pipeline',
-      script: 'bun',
-      args: '--watch src/main.ts',
-      cwd: __dirname,
-      env: {
-        NODE_ENV: 'development',
-      },
-    },
-    {
-      name: 'frontend',
-      script: 'bun',
-      args: 'run dev',
-      cwd: __dirname + '/frontend',
-      env: {
-        PORT: 3001,
-        NODE_ENV: 'development',
-      },
-    },
-  ],
+	apps: [
+		{
+			...commonApp,
+			name: "api-server",
+			script: "bun",
+			args: "--watch src/services/server.ts",
+			cwd: __dirname,
+		},
+		{
+			...commonApp,
+			name: "markets",
+			script: "bun",
+			args: "--watch src/services/markets.ts",
+			cwd: __dirname,
+		},
+		{
+			...commonApp,
+			name: "pipeline",
+			script: "bun",
+			args: "--watch src/main.ts",
+			cwd: __dirname,
+		},
+		{
+			...commonApp,
+			name: "frontend",
+			script: "bun",
+			args: "run dev",
+			cwd: path.join(__dirname, "frontend"),
+		},
+		{
+			...commonApp,
+			name: "frontend-build-watcher",
+			script: "./scripts/watch-frontend-build.sh",
+			interpreter: "bash",
+			cwd: __dirname,
+		},
+		{
+			...commonApp,
+			name: "cloudflared",
+			script: path.join(__dirname, "..", "tunnel", "start.sh"),
+			interpreter: "bash",
+			cwd: __dirname,
+		},
+	],
 };

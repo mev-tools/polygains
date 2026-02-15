@@ -1,20 +1,20 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1771011053132,
-      "tag": "0000_exotic_fat_cobra",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1771057965834,
-      "tag": "0001_chunky_rocket_racer",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "postgresql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1771162854692,
+			"tag": "0001_zippy_hannibal_king",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1771163705173,
+			"tag": "0001_colorful_shaman",
+			"breakpoints": true
+		}
+	]
 }

@@ -9,6 +9,7 @@ help: ## Show this help message
 start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "🚀 Starting all services..."
 	@echo "📊 Starting postgres..."
+	@mkdir -p .pgsocket && chmod 777 .pgsocket || true
 	@docker compose up -d postgres
 	@echo "⏳ Waiting for postgres to be healthy..."
 	@for i in $$(seq 1 60); do \
@@ -22,10 +23,10 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "🗄️  Preparing database schema..."
 	@$(MAKE) db-prepare
 	@echo ""
-	@if [ ! -d "frontend/dist" ]; then \
-		echo "🏗️  Building frontend (first time)..."; \
-		cd frontend && bun run build; \
-		echo "✅ Frontend built!"; \
+	@if [ ! -f "public/index.html" ]; then \
+		echo "🏗️  Building frontend to ./public ..."; \
+		cd frontend && bun install && bun run build --outdir=../public; \
+		echo "✅ Frontend built in ./public"; \
 	else \
 		echo "✅ Frontend already built (skip) - run 'make build-frontend' to rebuild"; \
 	fi
@@ -36,8 +37,9 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "✨ All services started!"
 	@echo ""
 	@echo "📊 Service URLs:"
-	@echo "   API Server:  http://localhost:4000"
-	@echo "   Frontend:    http://localhost:3001"
+	@echo "   API Server:  http://127.0.0.1:4069"
+	@echo "   Frontend:    http://127.0.0.1:3001"
+	@echo "   Public URL:  https://polygains.com (when cloudflared tunnel is running)"
 	@echo ""
 	@echo "📝 Useful commands:"
 	@echo "   make status  - View service status"
@@ -144,14 +146,14 @@ test: ## Run unit tests
 test-e2e: ## Run e2e integration tests
 	@echo "🧪 Running e2e tests..."
 	@echo "⚠️  Make sure services are running (make dev-local)"
-	bun run integrationtest
+	bunx playwright test
 
 test-all: ## Run all tests (unit + e2e)
 	@echo "Running unit tests..."
 	bun test tests/*.test.ts
 	@echo ""
 	@echo "Running e2e tests..."
-	bun run integrationtest
+	bunx playwright test
 
 dev: ## Run dev server locally (not in docker)
 	bun run dev
@@ -159,6 +161,7 @@ dev: ## Run dev server locally (not in docker)
 dev-local: ## Run all services locally (postgres in docker, rest with bun)
 	@echo "🚀 Starting local development environment..."
 	@echo "📊 Starting postgres..."
+	@mkdir -p .pgsocket && chmod 777 .pgsocket || true
 	@docker compose up -d postgres
 	@echo "⏳ Waiting for postgres to be healthy..."
 	@for i in $$(seq 1 60); do \
@@ -171,14 +174,14 @@ dev-local: ## Run all services locally (postgres in docker, rest with bun)
 	@echo "✅ Postgres ready!"
 	@echo ""
 	@echo "🔧 Run these commands in separate terminals:"
-	@echo "   Terminal 1: make run-server    (API server on port 4000)"
+	@echo "   Terminal 1: make run-server    (API server on port 4069)"
 	@echo "   Terminal 2: make run-markets   (Markets fetcher)"
 	@echo "   Terminal 3: make run-pipeline  (Blockchain pipeline)"
 	@echo "   Terminal 4: make run-frontend  (Frontend on port 3000)"
 	@echo ""
 
 run-server: ## Run API server locally
-	@echo "🚀 Starting API server on port 4000..."
+	@echo "🚀 Starting API server on port 4069..."
 	bun --watch src/services/server.ts
 
 run-markets: ## Run markets service locally
@@ -199,7 +202,7 @@ stop-local: ## Stop local postgres
 
 build-frontend: ## Build frontend for production
 	@echo "🏗️  Building frontend..."
-	cd frontend && bun run build
+	cd frontend && bun install && bun run build --outdir=../public
 	@echo "✅ Frontend built!"
 
 build: ## Build the project
@@ -207,9 +210,16 @@ build: ## Build the project
 
 clean: ## Clean up docker resources
 	@echo "🧹 Cleaning up docker resources..."
-	@bunx pm2 delete all 2>/dev/null || true
+	@$(MAKE) stop >/dev/null 2>&1 || true
+	@bunx pm2 kill 2>/dev/null || true
+	@pkill -f "[b]un --watch src/services/server.ts" 2>/dev/null || true
+	@pkill -f "[b]un --watch src/services/markets.ts" 2>/dev/null || true
+	@pkill -f "[b]un --watch src/main.ts" 2>/dev/null || true
+	@pkill -f "[b]un run dev" 2>/dev/null || true
+	@pkill -f "[w]atch-frontend-build.sh" 2>/dev/null || true
 	@docker compose down -v 2>/dev/null || true
 	@docker ps -aq -f name=postgres_db | xargs -r docker rm -f 2>/dev/null || true
 	@docker system prune -f 2>/dev/null || true
 	@docker volume prune -f 2>/dev/null || true
-	@echo "✅ Docker resources cleaned"
+	@rm -f state.json
+	@echo "✅ Docker resources cleaned and state.json removed"

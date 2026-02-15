@@ -37,3 +37,5 @@ tmp/
 
 # SSH keys
 keys/
+.pgsocket
+chunk**.js

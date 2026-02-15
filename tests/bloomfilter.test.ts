@@ -1,11 +1,12 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { BloomFilter } from "bloomfilter";
 import {
-	saveBloomFilter,
-	loadBloomFilter,
-	getBloomFilterMetadata,
-	deleteBloomFilter,
 	type BloomFilterId,
+	type BloomFilterInternals,
+	deleteBloomFilter,
+	getBloomFilterMetadata,
+	loadBloomFilter,
+	saveBloomFilter,
 } from "@/lib/db/bloomfilter";
 
 // Mock the database module
@@ -96,9 +97,9 @@ describe("BloomFilter Persistence", () => {
 			const result = await loadBloomFilter("insider");
 
 			expect(result).toBeNull();
-			expect(
-				mockDb.query.bloomfilterSnapshots.findFirst,
-			).toHaveBeenCalledTimes(1);
+			expect(mockDb.query.bloomfilterSnapshots.findFirst).toHaveBeenCalledTimes(
+				1,
+			);
 		});
 
 		test("should reconstruct BloomFilter from binary data", async () => {
@@ -106,7 +107,8 @@ describe("BloomFilter Persistence", () => {
 			originalFilter.add("0xdeadbeef");
 			originalFilter.add("0xcafebabe");
 
-			const buckets = (originalFilter as any).buckets as Int32Array;
+			const buckets = (originalFilter as unknown as BloomFilterInternals)
+				.buckets;
 			const buffer = Buffer.from(buckets.buffer);
 
 			mockDb.query.bloomfilterSnapshots.findFirst.mockResolvedValueOnce({
@@ -121,9 +123,9 @@ describe("BloomFilter Persistence", () => {
 			const loadedFilter = await loadBloomFilter("insider");
 
 			expect(loadedFilter).not.toBeNull();
-			expect(loadedFilter!.test("0xdeadbeef")).toBe(true);
-			expect(loadedFilter!.test("0xcafebabe")).toBe(true);
-			expect(loadedFilter!.test("0x00000000")).toBe(false);
+			expect(loadedFilter?.test("0xdeadbeef")).toBe(true);
+			expect(loadedFilter?.test("0xcafebabe")).toBe(true);
+			expect(loadedFilter?.test("0x00000000")).toBe(false);
 		});
 
 		test("should preserve bloom filter properties across save/load cycle", async () => {
@@ -134,9 +136,12 @@ describe("BloomFilter Persistence", () => {
 			];
 
 			const originalFilter = new BloomFilter(32 * 25600, 4);
-			testAddresses.forEach((addr) => originalFilter.add(addr));
+			for (const addr of testAddresses) {
+				originalFilter.add(addr);
+			}
 
-			const buckets = (originalFilter as any).buckets as Int32Array;
+			const buckets = (originalFilter as unknown as { buckets: Int32Array })
+				.buckets;
 			const buffer = Buffer.from(buckets.buffer);
 
 			mockDb.query.bloomfilterSnapshots.findFirst.mockResolvedValueOnce({
@@ -151,13 +156,13 @@ describe("BloomFilter Persistence", () => {
 			const loadedFilter = await loadBloomFilter("insider");
 
 			// All original items should test positive
-			testAddresses.forEach((addr) => {
-				expect(loadedFilter!.test(addr)).toBe(true);
-			});
+			for (const addr of testAddresses) {
+				expect(loadedFilter?.test(addr)).toBe(true);
+			}
 
 			// Random address should likely test negative (with acceptable false positive rate)
 			const randomAddr = "0x9999999999999999999999999999999999999999";
-			const falsePositive = loadedFilter!.test(randomAddr);
+			const falsePositive = loadedFilter?.test(randomAddr);
 			// With good parameters, false positive rate should be low, but we can't guarantee
 			// So we just verify the filter is working, not the specific result
 			expect(typeof falsePositive).toBe("boolean");
@@ -181,9 +186,9 @@ describe("BloomFilter Persistence", () => {
 			const metadata = await getBloomFilterMetadata("insider");
 
 			expect(metadata).toEqual(mockMetadata);
-			expect(
-				mockDb.query.bloomfilterSnapshots.findFirst,
-			).toHaveBeenCalledTimes(1);
+			expect(mockDb.query.bloomfilterSnapshots.findFirst).toHaveBeenCalledTimes(
+				1,
+			);
 
 			// Verify columns parameter excludes buckets (check the call)
 			const call = mockDb.query.bloomfilterSnapshots.findFirst.mock.calls[0][0];
@@ -205,7 +210,7 @@ describe("BloomFilter Persistence", () => {
 	describe("Binary storage efficiency", () => {
 		test("should use less space than JSON serialization", () => {
 			const filter = new BloomFilter(32 * 25600, 4);
-			const buckets = (filter as any).buckets as Int32Array;
+			const buckets = (filter as unknown as BloomFilterInternals).buckets;
 
 			const binaryBuffer = Buffer.from(buckets.buffer);
 			const jsonString = JSON.stringify(Array.from(buckets));

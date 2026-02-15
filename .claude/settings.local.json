@@ -1,22 +1,22 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(bun test:*)",
-      "Bash(bun:*)",
-      "Bash(curl:*)",
-      "Bash(docker compose:*)",
-      "Bash(find:*)",
-      "Bash(bunx drizzle-kit generate:*)",
-      "Bash(bunx drizzle-kit:*)",
-      "Bash(ls:*)",
-      "Bash(PGPASSWORD=postgres bun:sql -h localhost -p 5432 -U postgres -d sqd -c \"\\\\dt\")",
-      "Bash(psql:*)",
-      "Bash(make clear:*)",
-      "Bash(chmod:*)",
-      "Bash(docker rm:*)",
-      "Bash(docker system prune:*)",
-      "Bash(docker volume prune:*)",
-      "Bash(xargs:*)"
-    ]
-  }
+	"permissions": {
+		"allow": [
+			"Bash(bun test:*)",
+			"Bash(bun:*)",
+			"Bash(curl:*)",
+			"Bash(docker compose:*)",
+			"Bash(find:*)",
+			"Bash(bunx drizzle-kit generate:*)",
+			"Bash(bunx drizzle-kit:*)",
+			"Bash(ls:*)",
+			"Bash(PGPASSWORD=postgres bun:sql -h localhost -p 5432 -U postgres -d sqd -c \"\\\\dt\")",
+			"Bash(psql:*)",
+			"Bash(make clear:*)",
+			"Bash(chmod:*)",
+			"Bash(docker rm:*)",
+			"Bash(docker system prune:*)",
+			"Bash(docker volume prune:*)",
+			"Bash(xargs:*)"
+		]
+	}
 }

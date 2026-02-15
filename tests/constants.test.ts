@@ -1,14 +1,14 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-	START_BLOCK,
-	USDC_DENOMINATOR,
 	BLOOM_SYNC_INTERVAL_MS,
-	VOLUME_THRESHOLD,
+	BPS_SCALE,
 	CONTRACTS,
 	FIFTEEN_MINUTES,
 	MIN_PRICE,
-	BPS_SCALE,
 	MIN_PRICE_BPS,
+	START_BLOCK,
+	USDC_DENOMINATOR,
+	VOLUME_THRESHOLD,
 } from "@/lib/const";
 
 describe("Constants validation", () => {
@@ -149,7 +149,7 @@ describe("Constants validation", () => {
 		test("VOLUME_THRESHOLD should be achievable with realistic trades", () => {
 			// 4000 USDC threshold / 0.95 price = ~4210 shares
 			const sharesNeeded = (VOLUME_THRESHOLD * 100n) / 95n;
-			const expectedShares = 4_210_526_315n; // approximately
+			const _expectedShares = 4_210_526_315n; // approximately
 
 			expect(sharesNeeded).toBeGreaterThan(4_000n * USDC_DENOMINATOR);
 			expect(sharesNeeded).toBeLessThan(4_500n * USDC_DENOMINATOR);
@@ -207,7 +207,8 @@ describe("Constants validation", () => {
 		test("constants should be frozen (if exported as const)", () => {
 			// CONTRACTS object should not be modifiable
 			expect(() => {
-				(CONTRACTS as any).EXCHANGE = "0x0000000000000000000000000000000000000000";
+				(CONTRACTS as unknown as Record<string, string>).EXCHANGE =
+					"0x0000000000000000000000000000000000000000";
 			}).toThrow();
 		});
 

@@ -159,6 +159,14 @@ const result = await Bun.build({
 	...cliConfig,
 });
 
+// Copy _redirects file for Cloudflare Pages SPA routing
+const redirectsSrc = path.resolve("src", "_redirects");
+if (existsSync(redirectsSrc)) {
+	const redirectsDest = path.join(outdir, "_redirects");
+	await Bun.write(redirectsDest, Bun.file(redirectsSrc));
+	console.log("📝 Copied _redirects for Cloudflare Pages");
+}
+
 const end = performance.now();
 
 const outputTable = result.outputs.map((output) => ({

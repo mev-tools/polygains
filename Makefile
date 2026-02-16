@@ -42,12 +42,16 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "   make stop    - Stop all services"
 	@echo "   make deploy-frontend - Build and deploy frontend to R2"
 
-deploy-frontend: ## Build and deploy frontend to R2
+deploy-frontend: ## Build and deploy frontend to Cloudflare Pages
 	@echo "🏗️  Building frontend..."
 	@cd frontend && bun install && bun build.ts
-	@echo "🚀 Deploying to R2 (polygains-web)..."
-	@npx wrangler r2 object sync polygains-web --directory ./public/dist
+	@echo "🚀 Deploying to Cloudflare Pages..."
+	@npx wrangler pages deploy ./public/dist --project-name polygains --branch main
 	@echo "✅ Frontend deployed to https://polygains.com"
+
+# The following target is deprecated in favor of Cloudflare Pages
+deploy-worker:
+	@echo "Worker deployment is no longer needed with Cloudflare Pages"
 
 stop: ## Stop all services
 	@echo "🛑 Stopping all services..."

@@ -36,10 +36,10 @@ while true; do
 
   echo "[frontend-build-watcher] Change detected. Building frontend..."
   if (
-    cd "${FRONTEND_DIR}"
-    bun run build
+    cd "${ROOT_DIR}"
+    make deploy-frontend
   ); then
-    echo "[frontend-build-watcher] Build complete."
+    echo "[frontend-build-watcher] Build and deploy complete."
   else
     echo "[frontend-build-watcher] Build failed; waiting for next source change."
     last_snapshot="${current_snapshot}"

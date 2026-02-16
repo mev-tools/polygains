@@ -15,7 +15,7 @@ import {
 	InsiderDetector,
 	NotInsiderDetector,
 	XXHash32Set,
-} from "./detector-v2";
+} from "./detector";
 import { BloomFilterPersistor } from "./persistor";
 import {
 	AccountAddressMapPersistor,

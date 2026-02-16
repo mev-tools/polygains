@@ -1,121 +1,43 @@
 import { BloomFilter } from "bloomfilter";
-import { Heap } from "heap-js";
+import {
+	InsiderEvaluator,
+	type TraderData,
+	WindowBuffer,
+} from "./src/services/buffer";
+import { InsiderDetector } from "./src/services/insider";
+import { NotInsiderDetector } from "./src/services/notinsider";
 
 // Benchmark configuration
 const W_SIZE_MS = 15 * 60 * 1000; // 15 minutes
-const NUM_TRADERS = 10000;
-const NUM_ORDERS = 100000;
+const NUM_ORDERS_PER_BATCH = 1000;
+const NUM_BATCHES = 100;
 const BITS = 32 * 25600;
 const HASHES = 4;
+const SIDE = { BUY: 1, SELL: 0 };
+const VOLUME_THRESHOLD = 4_000_000_000n; // 4000 USDC * 1e6
 
-// Timing utilities
-const now = () => performance.now();
-const measure = (fn: () => void, label: string) => {
-	const start = now();
-	fn();
-	const elapsed = now() - start;
-	console.log(`[BENCHMARK] ${label}: ${elapsed.toFixed(2)}ms`);
-	return elapsed;
-};
-
-// Simulate TraderData
-interface TraderData {
-	id: string;
-	userStats: {
-		tradeVol: bigint;
-		tradeCount: number;
-		firstSeen: number;
-	};
+interface TokenAgg {
+	vol: bigint;
+	count: number;
+	firstTimestamp: number;
 }
 
 interface TraderAgg {
 	totalVol: bigint;
 	tradeCount: number;
 	firstTimestamp: number;
-	tokens: Record<string, unknown>;
+	tokens: Record<string, TokenAgg>;
 }
 
-console.log("=== BENCHMARKING POLYMARKET PIPELINE ===\n");
-
-// Benchmark 1: BloomFilter.has() operations
-console.log("1. BloomFilter.has() performance");
-const filter = new BloomFilter(BITS, HASHES);
-// Pre-populate with some addresses
-for (let i = 0; i < 100000; i++) {
-	filter.add(`0x${i.toString(16).padStart(40, "0")}`);
-}
-
-measure(() => {
-	for (let i = 0; i < 100000; i++) {
-		filter.test(`0x${i.toString(16).padStart(40, "0")}`);
-	}
-}, "100k BloomFilter.test() calls");
-
-// Benchmark 2: Map.has() + Map.get() combo (like line 166 in pipe.ts)
-console.log("\n2. Map.has() + Map.get() performance");
-const map = new Map<string, TraderData>();
-for (let i = 0; i < 10000; i++) {
-	map.set(`0x${i.toString(16).padStart(40, "0")}`, {
-		id: `0x${i.toString(16).padStart(40, "0")}`,
-		userStats: { tradeVol: 0n, tradeCount: 0, firstSeen: Date.now() },
-	});
-}
-
-measure(() => {
-	for (let i = 0; i < 100000; i++) {
-		const trader = `0x${i.toString(16).padStart(40, "0")}`;
-		map.has(trader) || map.has(trader); // Simulating double has() like insiderDetector.has() || notInsiderDetector.has()
-	}
-}, "100k double Map.has() calls");
-
-// Benchmark 3: WindowBuffer.flush() simulation
-console.log("\n3. WindowBuffer.flush() performance");
-const minHeap = new Heap(
-	(a: TraderData, b: TraderData) =>
-		a.userStats.firstSeen - b.userStats.firstSeen,
-);
-const bufferMap = new Map<string, TraderData>();
-const deletedKeys = new Set<string>();
-const currentTimestamp = Date.now();
-
-// Populate with 10000 traders spread over 15 minutes
-for (let i = 0; i < NUM_TRADERS; i++) {
-	const trader: TraderData = {
-		id: `0x${i.toString(16).padStart(40, "0")}`,
-		userStats: {
-			tradeVol: BigInt(i),
-			tradeCount: 1,
-			firstSeen: currentTimestamp - (i * W_SIZE_MS) / NUM_TRADERS,
-		},
-	};
-	minHeap.push(trader);
-	bufferMap.set(trader.id, trader);
-}
-
-// Simulate flush() - this should expire about half the traders
-let flushedCount = 0;
-measure(() => {
-	while (
-		minHeap.length > 0 &&
-		currentTimestamp - (minHeap.peek()?.userStats.firstSeen ?? 0) >= W_SIZE_MS
-	) {
-		const expiredItem = minHeap.pop();
-		if (!expiredItem) break;
-		const key = expiredItem.id;
-
-		if (deletedKeys.has(key)) {
-			deletedKeys.delete(key);
-			continue;
-		}
-
-		if (bufferMap.get(key) !== expiredItem) {
-			continue;
-		}
-
-		flushedCount++;
-		bufferMap.delete(key);
-	}
-}, `Flush() ${NUM_TRADERS} traders (${flushedCount} expired)`);
+// Timing utilities
+const now = () => performance.now();
+const measure = async (fn: () => void | Promise<void>, label: string) => {
+	const start = now();
+	await fn();
+	const elapsed = now() - start;
+	console.log(`[BENCHMARK] ${label}: ${elapsed.toFixed(2)}ms`);
+	return elapsed;
+};
 
 interface Order {
 	trader: string;
@@ -126,63 +48,272 @@ interface Order {
 	assetId: string;
 }
 
-// Benchmark 4: Batch processing reduce loop (pipe.ts lines 144-203)
-console.log("\n4. Batch processing reduce loop performance");
-const windowBuffer = new Map<string, TraderData>();
-
-// Create test orders - 100k orders
-const orders: Order[] = [];
-for (let i = 0; i < NUM_ORDERS; i++) {
-	orders.push({
-		trader: `0x${(i % 5000).toString(16).padStart(40, "0")}`,
-		usdc: BigInt(1000000),
-		shares: BigInt(1),
-		side: 1, // BUY
-		timestamp: currentTimestamp - Math.random() * W_SIZE_MS,
-		assetId: `asset-${i % 100}`,
-	});
+// Generate realistic order data
+function generateOrders(count: number, baseTimestamp: number): Order[] {
+	const orders: Order[] = [];
+	for (let i = 0; i < count; i++) {
+		orders.push({
+			trader: `0x${Math.floor(Math.random() * 50000)
+				.toString(16)
+				.padStart(40, "0")}`,
+			usdc: BigInt(Math.floor(Math.random() * 5000000) + 100000), // 0.1 to 5 USDC
+			shares: BigInt(1),
+			side: SIDE.BUY,
+			timestamp: baseTimestamp + Math.floor(Math.random() * 1000),
+			assetId: `asset-${Math.floor(Math.random() * 100)}`,
+		});
+	}
+	return orders;
 }
 
-measure(() => {
-	orders.reduce((acc, order) => {
-		const { trader, usdc, timestamp } = order;
+console.log("=== POLYMARKET PIPELINE BENCHMARK ===\n");
 
-		// Simulate the check in line 166
-		if (windowBuffer.has(trader)) {
-			return acc;
+const insiderDetector = new InsiderDetector();
+const notInsiderDetector = new NotInsiderDetector();
+const windowBuffer = new WindowBuffer<TraderData>(
+	W_SIZE_MS,
+	(item) => item.userStats.firstSeen,
+	(item) => item.id,
+);
+const evaluator = new InsiderEvaluator(
+	insiderDetector,
+	notInsiderDetector,
+	() => {},
+	() => {},
+);
+
+let totalOrders = 0;
+let totalFlushed = 0;
+let _totalTimeMs = 0;
+
+// Benchmark: Full batch processing loop (as in pipe.ts lines 122-262)
+console.log("1. Full batch processing simulation");
+console.log(
+	`   Processing ${NUM_BATCHES} batches of ${NUM_ORDERS_PER_BATCH} orders each...`,
+);
+
+await measure(
+	async () => {
+		for (let batch = 0; batch < NUM_BATCHES; batch++) {
+			const currentTimestamp = Date.now() + batch * 1000;
+			const orders = generateOrders(NUM_ORDERS_PER_BATCH, currentTimestamp);
+
+			// Step 1: Flush expired traders BEFORE consuming batch (line 141-142)
+			const flushed = windowBuffer.flush(currentTimestamp);
+			totalFlushed += Object.keys(flushed).length;
+			evaluator.evaluate(flushed);
+
+			// Step 2: Reduce orders (lines 144-203)
+			const reducedPositions = orders.reduce((acc, order) => {
+				const { trader, usdc, timestamp } = order;
+
+				// Skip if already known
+				if (notInsiderDetector.has(trader) || insiderDetector.has(trader)) {
+					return acc;
+				}
+
+				// Get firstSeen
+				const firstSeen =
+					windowBuffer.get(trader)?.userStats.firstSeen ??
+					acc.get(trader)?.firstTimestamp ??
+					timestamp;
+
+				// Only count volume within first 15 minutes
+				if (timestamp - firstSeen > W_SIZE_MS) {
+					return acc;
+				}
+
+				// Initialize aggregator
+				let agg = acc.get(trader);
+				if (!agg) {
+					agg = {
+						totalVol: 0n,
+						tradeCount: 0,
+						firstTimestamp: firstSeen,
+						tokens: {},
+					};
+					acc.set(trader, agg);
+				}
+
+				agg.totalVol += usdc;
+				agg.tradeCount += 1;
+
+				// Token stats
+				if (!agg.tokens[order.assetId]) {
+					agg.tokens[order.assetId] = {
+						vol: 0n,
+						count: 0,
+						firstTimestamp: timestamp,
+					};
+				}
+				agg.tokens[order.assetId].vol += usdc;
+				agg.tokens[order.assetId].count += 1;
+
+				return acc;
+			}, new Map<string, TraderAgg>());
+
+			// Step 3: Update windowBuffer (lines 206-254)
+			for (const [trader, aggData] of reducedPositions.entries()) {
+				let user = windowBuffer.get(trader);
+				const isNewUser = !user;
+
+				if (isNewUser) {
+					user = {
+						id: trader,
+						tokenstats: {},
+						userStats: {
+							tradeVol: 0n,
+							tradeCount: 0,
+							firstSeen: aggData.firstTimestamp,
+						},
+					};
+					windowBuffer.set(trader, user);
+				}
+
+				user.userStats.tradeVol += aggData.totalVol;
+				user.userStats.tradeCount += aggData.tradeCount;
+
+				// Token stats
+				for (const [assetId, tokenData] of Object.entries(aggData.tokens)) {
+					if (!user.tokenstats[assetId]) {
+						user.tokenstats[assetId] = {
+							tradeVol: 0n,
+							tradeCount: 0,
+							firstSeen: tokenData.firstTimestamp,
+						};
+					}
+					user.tokenstats[assetId].tradeVol += tokenData.vol as bigint;
+					user.tokenstats[assetId].tradeCount += tokenData.count as number;
+				}
+
+				// Step 4: Immediate insider detection
+				const isFirstSeenRecently =
+					currentTimestamp - user.userStats.firstSeen <= W_SIZE_MS;
+				const meetsVolumeThreshold =
+					user.userStats.tradeVol >= VOLUME_THRESHOLD;
+
+				if (isFirstSeenRecently && meetsVolumeThreshold) {
+					insiderDetector.add(trader);
+					windowBuffer.delete(trader);
+				}
+			}
+
+			// Step 5: Flush AFTER batch (lines 261-262)
+			const flushedAfter = windowBuffer.flush(currentTimestamp);
+			totalFlushed += Object.keys(flushedAfter).length;
+			evaluator.evaluate(flushedAfter);
+
+			totalOrders += orders.length;
+			_totalTimeMs += 1000; // Simulate time passing
+		}
+	},
+	`Process ${NUM_BATCHES * NUM_ORDERS_PER_BATCH} orders in ${NUM_BATCHES} batches`,
+);
+
+console.log(`   Total orders processed: ${totalOrders}`);
+console.log(`   Total traders flushed: ${totalFlushed}`);
+console.log(
+	`   Avg per batch: ${(totalOrders / NUM_BATCHES).toFixed(0)} orders`,
+);
+
+// Benchmark: Individual component performance
+console.log("\n2. Individual component hot paths");
+
+// Test WindowBuffer.set() + get() performance
+console.log("   Testing WindowBuffer.set() + get()...");
+await measure(() => {
+	const testBuffer = new WindowBuffer<TraderData>(W_SIZE_MS);
+	for (let i = 0; i < 10000; i++) {
+		const trader: TraderData = {
+			id: `0x${i.toString(16).padStart(40, "0")}`,
+			userStats: {
+				tradeVol: 0n,
+				tradeCount: 0,
+				firstSeen: Date.now(),
+			},
+		};
+		testBuffer.set(trader.id, trader);
+		testBuffer.get(trader.id);
+	}
+}, "10000 WindowBuffer.set() + get() calls");
+
+// Test BloomFilter.test() + test() combo (line 166 in pipe.ts)
+console.log("   Testing BloomFilter.test() combo...");
+const testFilter1 = new BloomFilter(BITS, HASHES);
+const testFilter2 = new BloomFilter(BITS, HASHES);
+await measure(() => {
+	for (let i = 0; i < 50000; i++) {
+		const trader = `0x${i.toString(16).padStart(40, "0")}`;
+		testFilter1.test(trader) || testFilter2.test(trader);
+	}
+}, "50000 BloomFilter.test() || test() calls");
+
+// Test Map.has() + Map.get() + set() combo (reduce loop hot path)
+console.log("   Testing Map operations (reduce hot path)...");
+await measure(() => {
+	const testAcc = new Map<
+		string,
+		Pick<TraderAgg, "totalVol" | "tradeCount" | "firstTimestamp">
+	>();
+	const testBuffer = new Map<string, TraderData>();
+	for (let i = 0; i < 50000; i++) {
+		const trader = `0x${i.toString(16).padStart(40, "0")}`;
+
+		if (testBuffer.has(trader)) {
+			continue;
 		}
 
-		// Initialize local aggregator
-		let agg = acc.get(trader);
+		let agg = testAcc.get(trader);
 		if (!agg) {
 			agg = {
 				totalVol: 0n,
 				tradeCount: 0,
-				firstTimestamp: timestamp,
-				tokens: {},
+				firstTimestamp: Date.now(),
 			};
-			acc.set(trader, agg);
+			testAcc.set(trader, agg);
 		}
 
-		agg.totalVol += usdc;
+		agg.totalVol += 1000000n;
 		agg.tradeCount += 1;
-
-		return acc;
-	}, new Map<string, TraderAgg>());
-}, `Reduce ${NUM_ORDERS} orders`);
-
-// Benchmark 5: NotInsiderDetector.addMany() performance
-console.log("\n5. NotInsiderDetector.addMany() performance");
-const testFilter = new BloomFilter(BITS, HASHES);
-const addresses: string[] = [];
-for (let i = 0; i < 1000; i++) {
-	addresses.push(`0x${i.toString(16).padStart(40, "0")}`);
-}
-
-measure(() => {
-	for (const addr of addresses) {
-		testFilter.add(addr);
 	}
-}, "Add 1000 addresses to BloomFilter (sequential)");
+}, "50000 Map.has() + get() + set() operations");
+
+// Test flush() with many expired items
+console.log("   Testing WindowBuffer.flush() with expired items...");
+await measure(() => {
+	const flushTestBuffer = new WindowBuffer<TraderData>(W_SIZE_MS);
+	const oldTimestamp = Date.now() - (W_SIZE_MS + 60000); // 16 minutes ago
+
+	// Add 10000 old traders
+	for (let i = 0; i < 10000; i++) {
+		const trader: TraderData = {
+			id: `0x${(10000 + i).toString(16).padStart(40, "0")}`,
+			userStats: {
+				tradeVol: 0n,
+				tradeCount: 0,
+				firstSeen: oldTimestamp + i * 100,
+			},
+		};
+		flushTestBuffer.set(trader.id, trader);
+	}
+
+	// Add 1000 recent traders
+	const recentTimestamp = Date.now() - 60000; // 1 minute ago
+	for (let i = 0; i < 1000; i++) {
+		const trader: TraderData = {
+			id: `0x${(20000 + i).toString(16).padStart(40, "0")}`,
+			userStats: {
+				tradeVol: 0n,
+				tradeCount: 0,
+				firstSeen: recentTimestamp,
+			},
+		};
+		flushTestBuffer.set(trader.id, trader);
+	}
+
+	// Flush should remove all 10000 old traders
+	const flushed = flushTestBuffer.flush(Date.now());
+	return Object.keys(flushed).length;
+}, "Flush 10000 expired + keep 1000 recent traders");
 
 console.log("\n=== BENCHMARK COMPLETE ===");

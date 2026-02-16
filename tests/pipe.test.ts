@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { hashWallet } from "@/lib/hash";
 import { SIDE } from "@/lib/types";
-import { InsiderDetector, NotInsiderDetector } from "@/services/detector-v2";
+import { InsiderDetector, NotInsiderDetector } from "@/services/detector";
 import { PolymarketPipe } from "@/services/pipe";
 
 interface TestablePipe {

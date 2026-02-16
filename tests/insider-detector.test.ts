@@ -3,7 +3,7 @@ import {
 	InsiderDetector,
 	NotInsiderDetector,
 	XXHash32Set,
-} from "@/services/detector-v2";
+} from "@/services/detector";
 
 describe("XXHash32Set", () => {
 	test("stores and matches hashes exactly", () => {

@@ -11,4 +11,10 @@ export interface AlertRowView {
 	timeText: string;
 	detailHtml: string;
 	expanded: boolean;
+	question: string;
+	timestamp: number;
+	conditionId: string;
+	priceFormatted: string;
+	volume: number;
+	price: number;
 }

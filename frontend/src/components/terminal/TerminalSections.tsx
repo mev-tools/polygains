@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, memo, useEffect, useState } from "react";
 import { formatPnL } from "../../lib/backtest";
 import type { AlertRowView } from "../../types/api";
 import type { GroupedMarket, Pagination } from "../../types/terminal";
@@ -21,6 +21,7 @@ interface LiveTrackerControlsProps {
 	disabled?: boolean;
 	soundEnabled: boolean;
 	selectedStrategies: Array<"reverse_insider" | "follow_insider">;
+	selectedSides: string[];
 	onMinPriceChange: (value: number) => void;
 	onMaxPriceChange: (value: number) => void;
 	onOnlyBetOnceChange: (value: boolean) => void;
@@ -30,6 +31,7 @@ interface LiveTrackerControlsProps {
 		mode: "reverse_insider" | "follow_insider",
 		enabled: boolean,
 	) => void;
+	onSideToggle: (side: string, enabled: boolean) => void;
 }
 
 interface LiveTrackerCardsProps {
@@ -58,7 +60,6 @@ interface AlertsSectionProps {
 	onNext: () => void;
 	onCategoryChange: (value: string) => void;
 	onWinnerFilterChange: (value: "BOTH" | "WINNERS" | "LOSERS") => void;
-	onToggleDetails: (rowId: string) => void;
 }
 
 interface DetectionSectionProps {
@@ -86,6 +87,36 @@ interface GlobalStatsSectionProps {
 
 interface BannerProps {
 	currentBlock: string;
+}
+
+function timeAgo(alertTime: number) {
+	const then = alertTime * 1000;
+	const now = Date.now();
+	const s = Math.max(1, Math.floor((now - then) / 1000));
+	const m = Math.floor(s / 60);
+	const h = Math.floor(m / 60);
+	const d = Math.floor(h / 24);
+	if (d >= 1) return `${d}d ago`;
+	if (h >= 1) return `${h}h ago`;
+	if (m >= 1) return `${m}m ago`;
+	return `${s}s ago`;
+}
+
+function formatMoney(n: number) {
+	return n.toLocaleString(undefined, {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 0,
+	});
+}
+
+function formatPrice(n: number) {
+	return n.toLocaleString(undefined, {
+		style: "currency",
+		currency: "USD",
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
 }
 
 const TOP_LOGO_ASCII = ` 
@@ -123,13 +154,16 @@ export function TerminalHeader({
 	syncHealthy,
 }: HeaderProps) {
 	return (
-		<div className="header">
-			<pre className="top-logo-ascii">{TOP_LOGO_ASCII}</pre>
-			<div className="header-meta">
-				<div className="timestamp">BLOCK: {currentBlock}</div>
+		<div className="navbar bg-base-100 border-b border-base-content/10 mb-8 p-0 min-h-0 pb-4 items-start">
+			<div className="flex-1">
+				<pre className="text-[0.5rem] leading-[0.6rem] md:text-[0.6rem] md:leading-[0.7rem] font-mono text-primary whitespace-pre overflow-x-hidden">
+					{TOP_LOGO_ASCII}
+				</pre>
+			</div>
+			<div className="flex-none flex flex-col items-end gap-1 text-xs font-mono">
+				<div className="opacity-50">BLOCK: {currentBlock}</div>
 				<div
-					className={syncHealthy ? "accent" : "danger"}
-					style={{ fontSize: "0.7rem", fontWeight: "bold" }}
+					className={`font-bold ${syncHealthy ? "text-accent" : "text-error"}`}
 				>
 					{syncLabel}
 				</div>
@@ -140,22 +174,14 @@ export function TerminalHeader({
 
 export function TerminalIntro({ text }: TerminalIntroProps) {
 	return (
-		<div className="terminal-row">
-			{/* <div className="terminal-header">
-				<pre className="logo-ascii">{BANNER_ASCII}</pre>
-				<span>
-					STATUS: <span className="terminal-accent">ONLINE</span>
-				</span>
-			</div> */}
-			<div className="terminal-content">
-				<div className="terminal-section">
-					<h3>
-						<span className="cli-prompt">$</span> run explain-detection
-					</h3>
-					<div className="cli-output" id="typewriter-text">
-						{text}
-						<span className="cursor" />
-					</div>
+		<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-8 font-mono text-xs md:text-sm">
+			<div className="card-body p-6">
+				<h3 className="text-primary uppercase opacity-80 text-xs mb-2">
+					<span className="text-primary mr-2">$</span> run explain-detection
+				</h3>
+				<div className="leading-relaxed opacity-70 min-h-[4.5em]">
+					{text}
+					<span className="inline-block w-1.5 h-3 bg-accent animate-pulse align-middle ml-1" />
 				</div>
 			</div>
 		</div>
@@ -170,12 +196,14 @@ export function LiveTrackerControls({
 	disabled = false,
 	soundEnabled,
 	selectedStrategies,
+	selectedSides,
 	onMinPriceChange,
 	onMaxPriceChange,
 	onOnlyBetOnceChange,
 	onBetOneDollarPerTradeChange,
 	onSoundToggle,
 	onStrategyChange,
+	onSideToggle,
 }: LiveTrackerControlsProps) {
 	const [minDraft, setMinDraft] = useState(minPrice.toFixed(2));
 	const [maxDraft, setMaxDraft] = useState(maxPrice.toFixed(2));
@@ -203,100 +231,132 @@ export function LiveTrackerControls({
 	};
 
 	return (
-		<h2 className="section-title with-controls">
-			LIVE_TRACKER
-			<div className="controls-row">
-				<input
-					type="text"
-					inputMode="decimal"
-					disabled={disabled}
-					value={minDraft}
-					placeholder="Min P"
-					className="input input-bordered input-xs filter-input"
-					onChange={(event) => setMinDraft(event.currentTarget.value)}
-					onFocus={(event) => event.currentTarget.select()}
-					onBlur={commitMinPrice}
-					onKeyDown={(event) => {
-						if (event.key === "Enter") {
-							event.currentTarget.blur();
-						}
-					}}
-				/>
-				<input
-					type="text"
-					inputMode="decimal"
-					disabled={disabled}
-					value={maxDraft}
-					placeholder="Max P"
-					className="input input-bordered input-xs filter-input"
-					onChange={(event) => setMaxDraft(event.currentTarget.value)}
-					onFocus={(event) => event.currentTarget.select()}
-					onBlur={commitMaxPrice}
-					onKeyDown={(event) => {
-						if (event.key === "Enter") {
-							event.currentTarget.blur();
-						}
-					}}
-				/>
-				<label className="filter-checkbox">
+		<div className="mb-4 mt-8">
+			<h2 className="text-xs font-bold text-base-content/50 uppercase mb-4 flex flex-wrap justify-between items-center gap-4">
+				<span>LIVE_TRACKER</span>
+				<div className="flex gap-2 items-center flex-wrap">
 					<input
-						className="checkbox checkbox-xs checkbox-primary"
-						type="checkbox"
+						type="text"
+						inputMode="decimal"
 						disabled={disabled}
-						checked={onlyBetOnce}
-						onChange={(event) =>
-							onOnlyBetOnceChange(event.currentTarget.checked)
-						}
+						value={minDraft}
+						placeholder="Min P"
+						className="input input-xs input-bordered w-16 text-center"
+						onChange={(event) => setMinDraft(event.currentTarget.value)}
+						onFocus={(event) => event.currentTarget.select()}
+						onBlur={commitMinPrice}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") event.currentTarget.blur();
+						}}
 					/>
-					1 Bet/Mkt
-				</label>
-				<label className="filter-checkbox">
 					<input
-						className="checkbox checkbox-xs checkbox-accent"
-						type="checkbox"
+						type="text"
+						inputMode="decimal"
 						disabled={disabled}
-						checked={betOneDollarPerTrade}
-						onChange={(event) =>
-							onBetOneDollarPerTradeChange(event.currentTarget.checked)
-						}
+						value={maxDraft}
+						placeholder="Max P"
+						className="input input-xs input-bordered w-16 text-center"
+						onChange={(event) => setMaxDraft(event.currentTarget.value)}
+						onFocus={(event) => event.currentTarget.select()}
+						onBlur={commitMaxPrice}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") event.currentTarget.blur();
+						}}
 					/>
-					Fixed $10 Stake
-				</label>
-				<button
-					type="button"
-					disabled={disabled}
-					className={`btn btn-xs ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
-					onClick={() => onSoundToggle(!soundEnabled)}
-					title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
-				>
-					{soundEnabled ? "🔊" : "🔇"}
-				</button>
-				<label className="filter-checkbox">
-					<input
-						className="checkbox checkbox-xs checkbox-success"
-						type="checkbox"
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-primary"
+							type="checkbox"
+							disabled={disabled}
+							checked={onlyBetOnce}
+							onChange={(event) =>
+								onOnlyBetOnceChange(event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">
+							1 BET/MKT
+						</span>
+					</label>
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-accent"
+							type="checkbox"
+							disabled={disabled}
+							checked={betOneDollarPerTrade}
+							onChange={(event) =>
+								onBetOneDollarPerTradeChange(event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">
+							FIXED $10
+						</span>
+					</label>
+					<button
+						type="button"
 						disabled={disabled}
-						checked={selectedStrategies.includes("follow_insider")}
-						onChange={(event) =>
-							onStrategyChange("follow_insider", event.currentTarget.checked)
-						}
-					/>
-					Follow
-				</label>
-				<label className="filter-checkbox">
-					<input
-						className="checkbox checkbox-xs checkbox-error"
-						type="checkbox"
-						disabled={disabled}
-						checked={selectedStrategies.includes("reverse_insider")}
-						onChange={(event) =>
-							onStrategyChange("reverse_insider", event.currentTarget.checked)
-						}
-					/>
-					Reverse
-				</label>
-			</div>
-		</h2>
+						className={`btn btn-xs ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
+						onClick={() => onSoundToggle(!soundEnabled)}
+						title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
+					>
+						{soundEnabled ? "🔊" : "🔇"}
+					</button>
+					<div className="divider divider-horizontal mx-0" />
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-success"
+							type="checkbox"
+							disabled={disabled}
+							checked={selectedStrategies.includes("follow_insider")}
+							onChange={(event) =>
+								onStrategyChange("follow_insider", event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">
+							FOLLOW
+						</span>
+					</label>
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-error"
+							type="checkbox"
+							disabled={disabled}
+							checked={selectedStrategies.includes("reverse_insider")}
+							onChange={(event) =>
+								onStrategyChange("reverse_insider", event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">
+							REVERSE
+						</span>
+					</label>
+					<div className="divider divider-horizontal mx-0" />
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-info"
+							type="checkbox"
+							disabled={disabled}
+							checked={selectedSides.includes("YES")}
+							onChange={(event) =>
+								onSideToggle("YES", event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">YES</span>
+					</label>
+					<label className="cursor-pointer label p-0 gap-2">
+						<input
+							className="checkbox checkbox-xs checkbox-warning"
+							type="checkbox"
+							disabled={disabled}
+							checked={selectedSides.includes("NO")}
+							onChange={(event) =>
+								onSideToggle("NO", event.currentTarget.checked)
+							}
+						/>
+						<span className="label-text text-xs text-base-content/70">NO</span>
+					</label>
+				</div>
+			</h2>
+		</div>
 	);
 }
 
@@ -312,40 +372,51 @@ export function LiveTrackerCards({
 	onRunBacktest,
 }: LiveTrackerCardsProps) {
 	return (
-		<div className="grid cols-3">
-			<div className="card">
-				<h2>Money Bet</h2>
-				<div className="stat">${formatLargeNumber(totalBet)}</div>
-				<div className="small-meta">
-					Open: <span>${formatLargeNumber(openInterest)}</span>
+		<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10 mb-8">
+			<div className="stat">
+				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+					Money Bet
+				</div>
+				<div className="stat-value text-base-content text-xl font-mono">
+					${formatLargeNumber(totalBet)}
+				</div>
+				<div className="stat-desc text-base-content/50 text-xs mt-1">
+					Open: <span className="text-base-content">${formatLargeNumber(openInterest)}</span>
 				</div>
 			</div>
-			<div className="card pnl-card">
-				<h2>PnL</h2>
+
+			<div className="stat relative">
+				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+					PnL
+				</div>
 				<div
-					className={`stat ${realizedPnL > 0 ? "accent" : realizedPnL < 0 ? "danger" : ""} `}
+					className={`stat-value text-xl font-mono ${realizedPnL > 0 ? "text-accent" : realizedPnL < 0 ? "text-error" : ""}`}
 				>
 					{formatPnL(realizedPnL)}
 				</div>
-
-				<button
-					type="button"
-					className="btn breath backtest-btn"
-					disabled={backtestRunning}
-					onClick={onRunBacktest}
-				>
-					{backtestRunning
-						? "Processing..."
-						: backtestCanContinue
-							? "Continue Backtest"
-							: "Run Backtest"}
-				</button>
+				<div className="stat-actions absolute top-0 right-0 bottom-0 flex items-center pr-4">
+					<button
+						type="button"
+						className={`btn btn-xs ${backtestRunning ? "btn-disabled" : "btn-outline btn-accent"} h-full rounded-none border-t-0 border-b-0 border-r-0 border-l px-4`}
+						disabled={backtestRunning}
+						onClick={onRunBacktest}
+					>
+						{backtestRunning
+							? "Processing..."
+							: backtestCanContinue
+								? "Continue Backtest"
+								: "Run Backtest"}
+					</button>
+				</div>
 			</div>
-			<div className="card">
-				<h2>Trades</h2>
-				<div className="stat">
+
+			<div className="stat">
+				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+					Trades
+				</div>
+				<div className="stat-value text-base-content text-xl font-mono">
 					{liveTrades}
-					<span className="trade-meta">
+					<span className="text-xs text-base-content/50 ml-2 font-normal">
 						(W:{liveWins} L:{liveLosses})
 					</span>
 				</div>
@@ -354,7 +425,39 @@ export function LiveTrackerCards({
 	);
 }
 
-export function AlertsSection({
+const NO_ALERTS_ASCII = `
+    .   .      .
+   ... ...    ...
+  .......  .......
+ .................
+...................
+ .................
+  .......  .......
+   ... ...    ...
+    .   .      .
+`;
+
+function NoAlertsAscii() {
+	const [frame, setFrame] = useState(0);
+	useEffect(() => {
+		const timer = setInterval(() => setFrame((f) => f + 1), 200);
+		return () => clearInterval(timer);
+	}, []);
+
+	const glitch = frame % 2 === 0 ? "opacity-100" : "opacity-50";
+	const text = frame % 4 === 0 ? "NO SIGNALS DETECTED" : "SEARCHING...";
+
+	return (
+		<div className="flex flex-col items-center justify-center py-12 gap-4 opacity-40 font-mono text-xs text-primary">
+			<pre className={`leading-[0.6rem] whitespace-pre ${glitch}`}>
+				{NO_ALERTS_ASCII}
+			</pre>
+			<div className="tracking-[0.2em] animate-pulse">{text}</div>
+		</div>
+	);
+}
+
+const AlertsSectionComponent = ({
 	rows,
 	pagination,
 	selectedCategory,
@@ -365,122 +468,148 @@ export function AlertsSection({
 	onNext,
 	onCategoryChange,
 	onWinnerFilterChange,
-	onToggleDetails,
-}: AlertsSectionProps) {
+}: AlertsSectionProps) => {
 	return (
 		<>
-			<h2 className="section-title with-controls">
-				RECENT_POLYGAINS_ALERTS
-				<div className="controls-row">
-					<fieldset className="join" aria-label="Alerts category filter">
-						<legend className="sr-only">Category Filter</legend>
+			<div className="flex flex-wrap justify-between items-center mb-4 mt-8 gap-4">
+				<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider">
+					RECENT_POLYGAINS_ALERTS
+				</h2>
+				<div className="flex flex-wrap gap-4 items-center">
+					<div className="join">
 						{categoryOptions.map((category) => (
 							<button
 								key={category}
 								type="button"
-								className={`btn btn-xs join-item ${category === selectedCategory ? "btn-primary" : "btn-ghost"}`}
+								className={`join-item btn btn-xs ${category === selectedCategory ? "btn-primary" : "btn-ghost"}`}
 								onClick={() => onCategoryChange(category)}
 								title={`Filter alerts by ${category}`}
 							>
 								{category}
 							</button>
 						))}
-					</fieldset>
-					<fieldset className="join" aria-label="Alert winner filter">
-						<legend className="sr-only">Winner Filter</legend>
+					</div>
+					<div className="join">
 						{(["BOTH", "WINNERS", "LOSERS"] as const).map((filter) => (
 							<button
 								key={filter}
 								type="button"
-								className={`btn btn-xs join-item ${filter === selectedWinnerFilter ? "btn-secondary" : "btn-ghost"}`}
+								className={`join-item btn btn-xs ${filter === selectedWinnerFilter ? "btn-secondary" : "btn-ghost"}`}
 								onClick={() => onWinnerFilterChange(filter)}
 								title={`Show ${filter.toLowerCase()}`}
 							>
 								{filter}
 							</button>
 						))}
-					</fieldset>
+					</div>
 				</div>
-			</h2>
-			<div className="table-container">
-				<table id="alerts-table">
-					<colgroup>
-						<col style={{ width: "25%" }} />
-						<col style={{ width: "20%" }} />
-						<col style={{ width: "25%" }} />
-						<col style={{ width: "15%" }} />
-						<col style={{ width: "15%" }} />
-					</colgroup>
+			</div>
+
+			<div className="overflow-x-auto bg-base-200 rounded-box border border-base-content/10 mb-8">
+				<table className="table table-xs w-full">
 					<thead>
-						<tr>
-							<th>Address</th>
-							<th>Volume (USDC)</th>
-							<th>Outcome</th>
-							<th>Date</th>
-							<th>Time</th>
+						<tr className="bg-base-300 text-base-content/50 uppercase tracking-wider">
+							<th>Market</th>
+							<th>Side</th>
+							<th className="text-right">Price</th>
+							<th className="text-right">Volume</th>
+							<th className="text-right">Time</th>
+							<th className="text-center">Lookup</th>
 						</tr>
 					</thead>
 					<tbody>
 						{rows.length === 0 ? (
 							<tr>
-								<td colSpan={5} className="empty-cell">
-									No alerts found
+								<td colSpan={6} className="text-center p-0">
+									<NoAlertsAscii />
 								</td>
 							</tr>
 						) : (
-							rows.map((row) => (
-								<Fragment key={row.rowId}>
-									<tr
-										className="table-clickable"
-										onClick={() => onToggleDetails(row.rowId)}
-									>
-										<td>
-											<span className="pos-id">{row.addrShort}</span>
-											<a
-												href={`https://polymarket.com/profile/${row.profileAddress}`}
-												target="_blank"
-												rel="noreferrer"
-												onClick={(event) => event.stopPropagation()}
-												className="profile-link"
-											>
-												↗
-											</a>
-										</td>
-										<td className="val">{row.volumeFormatted}</td>
-										<td>
-											<span className={`outcome-tag ${row.outcomeClass}`}>
-												{row.outcomeLabel}
-											</span>
-											{row.statusBadgeHtml ? (
-												<span
-													dangerouslySetInnerHTML={{
-														__html: row.statusBadgeHtml,
-													}}
-												/>
-											) : null}
-										</td>
-										<td className="val">{row.dateText}</td>
-										<td className="timestamp">{row.timeText}</td>
-									</tr>
-									<tr
-										id={row.rowId}
-										className="detail-row"
-										style={{ display: row.expanded ? "table-row" : "none" }}
-									>
-										<td
-											colSpan={5}
-											className="detail-cell"
-											dangerouslySetInnerHTML={{ __html: row.detailHtml }}
-										/>
-									</tr>
-								</Fragment>
-							))
+							rows.map((row, index) => {
+								const isYes = row.outcomeLabel === "YES";
+								return (
+									<Fragment key={row.rowId}>
+										<tr
+											className={`transition-colors border-b border-base-content/5 ${
+												index % 2 === 1 ? "bg-white/5" : "bg-transparent"
+											}`}
+										>
+											<td className="max-w-[300px]">
+												<div
+													className="font-bold text-base-content truncate"
+													title={row.question}
+												>
+													{row.question || `Condition: ${row.conditionId}`}
+												</div>
+												<div className="text-[10px] font-mono text-base-content/30 truncate">
+													{row.conditionId}
+												</div>
+											</td>
+											<td>
+												<div className="flex items-center gap-2">
+													<span
+														className={`badge badge-sm font-bold border-none rounded-sm px-2 py-0.5 text-[10px] uppercase ${
+															isYes
+																? "bg-success/20 text-success"
+																: row.outcomeLabel === "NO"
+																	? "bg-error/20 text-error"
+																	: "bg-base-content/20 text-base-content"
+														}`}
+													>
+														{row.outcomeLabel}
+													</span>
+													{row.statusBadgeHtml && (
+														<span
+															dangerouslySetInnerHTML={{
+																__html: row.statusBadgeHtml,
+															}}
+														/>
+													)}
+												</div>
+											</td>
+											<td className="text-right font-mono text-base-content/80">
+												@{row.priceFormatted}
+											</td>
+											<td className="text-right font-mono font-bold text-base-content">
+												{formatMoney(row.volume)}
+											</td>
+											<td className="text-right text-xs tabular-nums text-base-content/50">
+												{timeAgo(row.timestamp)}
+											</td>
+											<td className="text-center">
+												<a
+													href={`https://polymarket.com/profile/${row.profileAddress}`}
+													target="_blank"
+													rel="noreferrer"
+													className="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content"
+													title={`Lookup trader ${row.user}`}
+												>
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														viewBox="0 0 20 20"
+														fill="currentColor"
+														className="w-4 h-4"
+													>
+														<path
+															fillRule="evenodd"
+															d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+															clipRule="evenodd"
+														/>
+													</svg>
+												</a>
+											</td>
+										</tr>
+									</Fragment>
+								);
+							})
 						)}
 					</tbody>
 				</table>
-				<div className="pagination">
+
+				<div className="flex justify-between items-center p-4 border-t border-base-content/10 bg-base-200">
 					<button
 						type="button"
+						className="btn btn-xs btn-ghost"
 						onClick={onPrev}
 						disabled={isLoading || !pagination.hasPrev}
 					>
@@ -490,15 +619,13 @@ export function AlertsSection({
 							"← PREV"
 						)}
 					</button>
-					<span className="page-info">
-						{isLoading ? (
-							<span className="loading loading-dots loading-xs" />
-						) : null}{" "}
-						Page {pagination.page} of {pagination.totalPages} (
-						{pagination.total} total)
+					<span className="text-xs font-mono text-base-content/50 flex items-center gap-2">
+						{isLoading && <span className="loading loading-dots loading-xs" />}
+						Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
 					</span>
 					<button
 						type="button"
+						className="btn btn-xs btn-ghost"
 						onClick={onNext}
 						disabled={isLoading || !pagination.hasNext}
 					>
@@ -512,7 +639,18 @@ export function AlertsSection({
 			</div>
 		</>
 	);
-}
+};
+
+export const AlertsSection = memo(AlertsSectionComponent, (prev, next) => {
+	if (prev.isLoading !== next.isLoading) return false;
+	if (prev.selectedCategory !== next.selectedCategory) return false;
+	if (prev.selectedWinnerFilter !== next.selectedWinnerFilter) return false;
+	if (JSON.stringify(prev.pagination) !== JSON.stringify(next.pagination))
+		return false;
+	if (JSON.stringify(prev.categoryOptions) !== JSON.stringify(next.categoryOptions))
+		return false;
+	return JSON.stringify(prev.rows) === JSON.stringify(next.rows);
+});
 
 export function DetectionSection({
 	totalInsiders,
@@ -522,23 +660,25 @@ export function DetectionSection({
 }: DetectionSectionProps) {
 	return (
 		<>
-			<h2 className="section-title slim">POLYGAINS_DETECTION</h2>
-			<div className="grid cols-4">
-				<div className="card">
-					<h2>Total</h2>
-					<div className="stat accent">{totalInsiders}</div>
+			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2 mt-4">
+				POLYGAINS_DETECTION
+			</h2>
+			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Total</div>
+					<div className="stat-value text-accent text-xl">{totalInsiders}</div>
 				</div>
-				<div className="card">
-					<h2>YES</h2>
-					<div className="stat accent">{yesInsiders}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">YES</div>
+					<div className="stat-value text-accent text-xl">{yesInsiders}</div>
 				</div>
-				<div className="card">
-					<h2>NO</h2>
-					<div className="stat danger">{noInsiders}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">NO</div>
+					<div className="stat-value text-error text-xl">{noInsiders}</div>
 				</div>
-				<div className="card">
-					<h2>Volume</h2>
-					<div className="stat">{insiderVolume}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Volume</div>
+					<div className="stat-value text-base-content text-xl">{insiderVolume}</div>
 				</div>
 			</div>
 		</>
@@ -559,12 +699,12 @@ function renderMarketPrice(lastPrice: number, isClosed: boolean): string {
 
 function getOutcomeMeta(outcome: string | number): {
 	label: string;
-	toneClass: "yes" | "no" | "other";
+	toneClass: string;
 } {
 	const text = String(outcome).toUpperCase();
-	if (text === "YES" || text === "1") return { label: "YES", toneClass: "yes" };
-	if (text === "NO" || text === "0") return { label: "NO", toneClass: "no" };
-	return { label: text, toneClass: "other" };
+	if (text === "YES" || text === "1") return { label: "YES", toneClass: "bg-success/20 text-success border-success/20" };
+	if (text === "NO" || text === "0") return { label: "NO", toneClass: "bg-error/20 text-error border-error/20" };
+	return { label: text, toneClass: "bg-base-content/20 text-base-content border-base-content/20" };
 }
 
 function hasAllStats(outcome: {
@@ -597,38 +737,46 @@ export function MarketsSection({
 }: MarketsSectionProps) {
 	return (
 		<>
-			<h2 className="section-title">TOP_LIQUIDITY_MARKETS</h2>
-			<div className="table-container market-table-shell">
+			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-4 mt-8">
+				TOP_LIQUIDITY_MARKETS
+			</h2>
+			<div className="rounded-box border border-base-content/10 mb-8 p-2">
 				{markets.length === 0 ? (
-					<div className="empty-cell market-empty">No markets found</div>
+					<div className="p-8 text-center text-base-content/50">No markets found</div>
 				) : (
-					<div className="markets-stack">
+					<div className="flex flex-col gap-4">
 						{markets.map((market) => (
-							<section key={market.conditionId} className="market-card">
-								<h3 className="market-card-title" title={market.question}>
+							<section
+								key={market.conditionId}
+								className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box"
+							>
+								<h3
+									className="text-sm font-bold text-base-content mb-3 line-clamp-2"
+									title={market.question}
+								>
 									{market.question}
 								</h3>
-								<div className="overflow-x-auto market-outcome-wrap">
-									<table className="table table-xs market-outcome-table">
+								<div className="w-full rounded-lg border border-base-content/5 bg-base-100/50">
+									<table className="table table-xs w-full">
 										<thead>
-											<tr>
+											<tr className="bg-base-200 text-base-content/50 uppercase">
 												<th>Outcome</th>
 												<th>Trades</th>
 												<th>Insider Trades</th>
 												<th>Volume</th>
 												<th>Current Odds</th>
 												<th>
-													<span className="market-stats-head">
-														<span>Market Stats (ø (mean) / std / P95)</span>
-														<span
+													<div className="flex items-center gap-1">
+														<span>Market Stats</span>
+														<div
 															className="tooltip tooltip-left"
-															data-tip="ø (mean) is average fill size, std is standard deviation, and P95 is the 95th percentile fill size."
+															data-tip="ø (mean) / std / P95"
 														>
-															<span className="badge badge-ghost badge-xs">
+															<span className="badge badge-ghost badge-xs text-[10px] w-4 h-4 p-0">
 																?
 															</span>
-														</span>
-													</span>
+														</div>
+													</div>
 												</th>
 											</tr>
 										</thead>
@@ -647,24 +795,22 @@ export function MarketsSection({
 												return (
 													<tr
 														key={`${market.conditionId}-${String(outcome.outcome)}`}
-														className={
-															index % 2 === 1 ? "market-secondary-row" : ""
-														}
+														className={index % 2 === 1 ? "bg-base-200/50" : ""}
 													>
-														<td className="market-outcome-cell">
+														<td>
 															<span
-																className={`market-outcome-box ${outcomeMeta.toneClass}`}
+																className={`badge badge-sm font-bold border rounded-sm px-2 py-0.5 text-[10px] uppercase ${outcomeMeta.toneClass}`}
 															>
 																{outcomeMeta.label}
 															</span>
 														</td>
-														<td className="val">
+														<td className="font-mono tabular-nums text-base-content/80">
 															{totalTrades.toLocaleString()}
 														</td>
-														<td className="val">
+														<td className="font-mono tabular-nums text-base-content/80">
 															{insiderTradeCount.toLocaleString()}
 														</td>
-														<td className="val">
+														<td className="font-mono tabular-nums text-base-content/80">
 															$
 															{Number(outcome.volume || 0).toLocaleString(
 																undefined,
@@ -674,20 +820,18 @@ export function MarketsSection({
 																},
 															)}
 														</td>
-														<td className="val market-odds">
+														<td className="font-mono font-bold text-accent">
 															{renderMarketPrice(
 																Number(outcome.last_price || 0),
 																Boolean(market.closed || outcome.closed),
 															)}
 														</td>
-														<td className="val market-stats-cell">
+														<td className="font-mono text-base-content/60 text-[10px]">
 															{noTradeData ? (
-																<span className="market-stats-empty">
-																	no trade data
-																</span>
+																<span className="opacity-50">no trade data</span>
 															) : missingStats && statsLoading ? (
-																<span className="market-stats-loading">
-																	<span className="loading loading-spinner loading-xs" />{" "}
+																<span className="flex items-center gap-1 opacity-70">
+																	<span className="loading loading-spinner loading-xs" />
 																	loading...
 																</span>
 															) : (
@@ -704,9 +848,10 @@ export function MarketsSection({
 						))}
 					</div>
 				)}
-				<div className="pagination">
+				<div className="flex justify-between items-center p-2 mt-2 border-t border-base-content/10">
 					<button
 						type="button"
+						className="btn btn-xs btn-ghost"
 						onClick={onPrev}
 						disabled={isLoading || !pagination.hasPrev}
 					>
@@ -716,15 +861,13 @@ export function MarketsSection({
 							"← PREV"
 						)}
 					</button>
-					<span className="page-info">
-						{isLoading ? (
-							<span className="loading loading-dots loading-xs" />
-						) : null}{" "}
-						Page {pagination.page} of {pagination.totalPages} (
-						{pagination.total} total)
+					<span className="text-xs font-mono text-base-content/50 flex items-center gap-2">
+						{isLoading && <span className="loading loading-dots loading-xs" />}
+						Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
 					</span>
 					<button
 						type="button"
+						className="btn btn-xs btn-ghost"
 						onClick={onNext}
 						disabled={isLoading || !pagination.hasNext}
 					>
@@ -748,23 +891,25 @@ export function GlobalStatsSection({
 }: GlobalStatsSectionProps) {
 	return (
 		<>
-			<h2 className="section-title slim">GLOBAL_STATS</h2>
-			<div className="grid cols-4">
-				<div className="card">
-					<h2>Accounts</h2>
-					<div className="stat">{accounts}</div>
+			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2 mt-4">
+				GLOBAL_STATS
+			</h2>
+			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Accounts</div>
+					<div className="stat-value text-base-content text-xl">{accounts}</div>
 				</div>
-				<div className="card">
-					<h2>Markets</h2>
-					<div className="stat">{markets}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Markets</div>
+					<div className="stat-value text-base-content text-xl">{markets}</div>
 				</div>
-				<div className="card">
-					<h2>Total Fills</h2>
-					<div className="stat">{trades}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Total Fills</div>
+					<div className="stat-value text-base-content text-xl">{trades}</div>
 				</div>
-				<div className="card">
-					<h2>Active Pos</h2>
-					<div className="stat accent">{activePositions}</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Active Pos</div>
+					<div className="stat-value text-accent text-xl">{activePositions}</div>
 				</div>
 			</div>
 		</>
@@ -773,36 +918,40 @@ export function GlobalStatsSection({
 
 export function TerminalBanner({ currentBlock }: BannerProps) {
 	return (
-		<div className="banner-container">
-			<div className="scanner" />
-			<div className="logo-ascii">{BANNER_ASCII}</div>
+		<div className="card bg-base-100 border-y-2 border-accent rounded-none mb-8 relative overflow-hidden">
+			<div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-accent/70 to-transparent shadow-[0_0_10px_rgba(16,185,129,0.6)] animate-[scan_4s_ease-in-out_infinite] pointer-events-none z-10" />
+			<div className="card-body p-6 font-mono text-xs md:text-sm">
+				<pre className="text-accent text-[0.5rem] md:text-xs leading-none mb-4 whitespace-pre overflow-x-hidden">
+					{BANNER_ASCII}
+				</pre>
 
-			<div className="subtitle-row">
-				<span>[v1.0.3] | Zero-History Trade Detection System by @mevtools</span>
-				<span>
-					BLOCK: {currentBlock} | STATUS:{" "}
-					<span className="status-online">INDEXING</span>
-				</span>
-			</div>
+				<div className="flex flex-col md:flex-row justify-between border-b border-accent/30 pb-3 mb-4 text-accent gap-2">
+					<span>[v1.0.3] | Zero-History Trade Detection System by @mevtools</span>
+					<span>
+						BLOCK: {currentBlock} | STATUS:{" "}
+						<span className="text-base-100 bg-accent px-1 font-bold">INDEXING</span>
+					</span>
+				</div>
 
-			<div className="cli-section">
-				<div className="cli-line" style={{ animationDelay: "0.5s" }}>
-					$ connecting to <span className="status-online">polymarket</span>...
-				</div>
-				<div className="cli-line" style={{ animationDelay: "1.2s" }}>
-					&gt; using <span className="status-online">subsquid pipes</span> for
-					indexing...
-				</div>
-				<div className="cli-line" style={{ animationDelay: "1.8s" }}>
-					&gt; triggering alerts...
-				</div>
-				<div className="cli-line" style={{ animationDelay: "2.4s" }}>
-					&gt; calibrating detection thresholds...
-				</div>
-				<div className="cli-line" style={{ animationDelay: "3.0s" }}>
-					<span className="accent">[OK]</span> polygains detection system{" "}
-					<span className="status-online">ONLINE</span>
-					<span className="cursor" />
+				<div className="flex flex-col gap-1 text-accent relative z-0">
+					<div className="opacity-0 animate-[typeIn_0.3s_forwards_0.5s]">
+						$ connecting to <span className="font-bold">polymarket</span>...
+					</div>
+					<div className="opacity-0 animate-[typeIn_0.3s_forwards_1.2s]">
+						&gt; using <span className="font-bold">subsquid pipes</span> for
+						indexing...
+					</div>
+					<div className="opacity-0 animate-[typeIn_0.3s_forwards_1.8s]">
+						&gt; triggering alerts...
+					</div>
+					<div className="opacity-0 animate-[typeIn_0.3s_forwards_2.4s]">
+						&gt; calibrating detection thresholds...
+					</div>
+					<div className="opacity-0 animate-[typeIn_0.3s_forwards_3.0s]">
+						<span className="font-bold">[OK]</span> polygains detection system{" "}
+						<span className="text-base-100 bg-accent px-1 font-bold">ONLINE</span>
+						<span className="inline-block w-1.5 h-3 bg-accent animate-pulse align-middle ml-1" />
+					</div>
 				</div>
 			</div>
 		</div>

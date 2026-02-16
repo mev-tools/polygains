@@ -10,7 +10,6 @@ import {
 	fetchTopLiquidityMarkets,
 } from "../api/terminalApi";
 import {
-	type AlertRowView,
 	AlertsSection,
 	DetectionSection,
 	GlobalStatsSection,
@@ -37,6 +36,7 @@ import {
 	sortStrategies,
 	winnerFilterMatches,
 } from "../lib/backtest";
+import type { AlertRowView } from "../types/api";
 import type {
 	AlertItem,
 	BetSizing,
@@ -100,15 +100,20 @@ function alertMatchesFilters(
 	maxPrice: number,
 	selectedCategory = "ALL",
 	winnerFilter: WinnerFilter = "BOTH",
+	sides: string[] = ["YES", "NO"],
 ): boolean {
+	const outcome = mapOutcome(alert.outcome).label;
+	if ((outcome === "YES" || outcome === "NO") && !sides.includes(outcome))
+		return false;
+
 	return sharedAlertMatchesFilters(alert, {
 		strategies: modes,
 		minPrice,
 		maxPrice,
 		category: selectedCategory,
 		winnerFilter,
-		onlyBetOnce: false, // Not used by alertMatchesFilters itself
-		betSizing: "target_payout", // Not used by alertMatchesFilters itself
+		onlyBetOnce: false,
+		betSizing: "target_payout",
 	});
 }
 
@@ -119,6 +124,7 @@ function alertMatchesFiltersCount(
 	maxPrice: number,
 	selectedCategory = "ALL",
 	winnerFilter: WinnerFilter = "BOTH",
+	sides: string[] = ["YES", "NO"],
 ): number {
 	let count = 0;
 	for (const alert of alerts) {
@@ -130,6 +136,7 @@ function alertMatchesFiltersCount(
 				maxPrice,
 				selectedCategory,
 				winnerFilter,
+				sides,
 			)
 		) {
 			count += 1;
@@ -217,16 +224,14 @@ export function TerminalPage() {
 	const [selectedStrategies, setSelectedStrategies] = useState<StrategyMode[]>([
 		"follow_insider",
 	]);
+	const [selectedSides, setSelectedSides] = useState<string[]>(["YES", "NO"]);
 
-	const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-	const [detailsByRow, setDetailsByRow] = useState<Record<string, string>>({});
 	const [marketStatsLoadingByCondition, setMarketStatsLoadingByCondition] =
 		useState<Record<string, boolean>>({});
 	const [floatingCash, setFloatingCash] = useState<FloatingCash[]>([]);
 
 	const [tracker, setTracker] = useState<TrackerState>(INITIAL_TRACKER_STATE);
 
-	const detailsRef = useRef<Record<string, string>>({});
 	const trackerRef = useRef<TrackerState>({ ...INITIAL_TRACKER_STATE });
 	const allHistoryRef = useRef<AlertItem[]>([]);
 	const lastAlertTimeRef = useRef(0);
@@ -340,6 +345,7 @@ export function TerminalPage() {
 				maxPriceFilter,
 				selectedCategory,
 				selectedWinnerFilter,
+				selectedSides,
 			);
 		});
 	}, [
@@ -349,6 +355,7 @@ export function TerminalPage() {
 		selectedCategory,
 		selectedStrategies,
 		selectedWinnerFilter,
+		selectedSides,
 	]);
 
 	const alertRows = useMemo<AlertRowView[]>(() => {
@@ -394,13 +401,15 @@ export function TerminalPage() {
 					second: "2-digit",
 					hour12: false,
 				}),
-				detailHtml:
-					detailsByRow[rowId] ||
-					'<div class="loading">Loading trade details...</div>',
-				expanded: Boolean(expandedRows[rowId]),
+				question: alert.question ?? "",
+				timestamp: Number(alert.alert_time),
+				conditionId: alert.conditionId ?? "",
+				priceFormatted: Number(alert.price || 0).toFixed(2),
+				volume: Number(alert.volume || 0),
+				price: Number(alert.price || 0),
 			};
 		});
-	}, [detailsByRow, expandedRows, filteredAlerts]);
+	}, [filteredAlerts]);
 
 	const alertsByRowId = useMemo(() => {
 		const byId = new Map<string, AlertItem>();
@@ -617,6 +626,7 @@ export function TerminalPage() {
 			category?: string;
 			winnerFilter?: WinnerFilter;
 			resolveClosedWithMarketDataOnly?: boolean;
+			sides?: string[];
 		},
 	) => {
 		const modes = sortStrategies(options?.modes ?? selectedStrategies);
@@ -632,6 +642,7 @@ export function TerminalPage() {
 			options?.category ?? selectedCategory,
 		);
 		const winnerFilter = options?.winnerFilter ?? selectedWinnerFilter;
+		const sides = options?.sides ?? selectedSides;
 		const resolveClosedWithMarketDataOnly = Boolean(
 			options?.resolveClosedWithMarketDataOnly,
 		);
@@ -654,6 +665,9 @@ export function TerminalPage() {
 			if (!winnerFilterMatches(alert, winnerFilter)) {
 				continue;
 			}
+
+			const outcome = mapOutcome(alert.outcome).label;
+			if (!sides.includes(outcome)) continue;
 
 			for (const mode of modes) {
 				const entryPrice = getEntryPrice(alert.price, mode);
@@ -786,76 +800,6 @@ export function TerminalPage() {
 		syncTrackerState();
 	};
 
-	const fetchDetailsForRow = async (rowId: string, alert: AlertItem) => {
-		const userKey = alert.walletAddress || alert.user;
-		const trades = await fetchInsiderTrades(userKey);
-
-		// Try to find the exact trade that triggered this alert in the user's history
-		const scopedTrades =
-			alert.conditionId && alert.conditionId.length > 0
-				? trades.filter(
-						(trade) =>
-							String(trade.condition_id ?? "") === String(alert.conditionId),
-					)
-				: [];
-
-		// If we found trades but none match the specific condition, use all trades as visible
-		// Otherwise, if we have no trades at all, we'll synthesize one from the alert
-		let visibleTrades = scopedTrades.length > 0 ? scopedTrades : trades;
-
-		if (visibleTrades.length === 0) {
-			// Synthesize a trade from the alert itself so the user always sees something
-			visibleTrades = [
-				{
-					position_id: null,
-					condition_id: alert.conditionId,
-					volume: alert.volume,
-					question: alert.question ?? null,
-					outcome: alert.outcome,
-					price: alert.price,
-				},
-			];
-		}
-
-		let html = "";
-		const rowAlertPrice = Number(alert.price || 0).toFixed(2);
-		const rowOutcome = mapOutcome(alert.outcome).label;
-		const followEntryPrice = getEntryPrice(
-			alert.price,
-			"follow_insider",
-		).toFixed(2);
-		const reverseEntryPrice = getEntryPrice(
-			alert.price,
-			"reverse_insider",
-		).toFixed(2);
-
-		const rows = visibleTrades
-			.map((trade) => {
-				const outcome = mapOutcome(trade.outcome);
-				const volume = Number(trade.volume || 0).toLocaleString(undefined, {
-					minimumFractionDigits: 2,
-					maximumFractionDigits: 2,
-				});
-				const questionText =
-					trade.question ||
-					`Condition: ${String(trade.condition_id ?? "unknown").slice(0, 10)}...`;
-
-				return `<div class="trade-item-grid"><div class="trade-item-asset"><span class="question">${questionText}</span><span class="pos-id">${String(trade.position_id || "-").slice(0, 10)}...</span></div><div><span class="outcome-tag ${outcome.className}">${outcome.label}</span></div><div class="val">$${volume}</div><div class="val accent">${Number(trade.price || 0).toFixed(2)}</div></div>`;
-			})
-			.join("");
-
-		const fallbackNotice =
-			scopedTrades.length === 0 && alert.conditionId && trades.length > 0
-				? '<div style="color: var(--text-dim); margin: 0 0 8px 0;">No exact market match for this alert condition. Showing recent trades for this wallet.</div>'
-				: "";
-
-		html = `<div class="trade-details-box"><div style="color: var(--text-dim); margin: 0 0 8px 0;">Row Outcome: <span class="accent">${rowOutcome}</span> | Alert Price: <span class="accent">${rowAlertPrice}</span> | Follow Entry: <span class="accent">${followEntryPrice}</span> | Reverse Entry: <span class="accent">${reverseEntryPrice}</span></div>${fallbackNotice}<div class="trade-details-header"><div>Asset Traded</div><div>Outcome</div><div>Volume (USDC)</div><div>Alert Price</div></div>${rows}</div>`;
-
-		const nextDetails = { ...detailsRef.current, [rowId]: html };
-		detailsRef.current = nextDetails;
-		setDetailsByRow(nextDetails);
-	};
-
 	const loadInsiderAlerts = async (
 		page = 1,
 		options?: {
@@ -866,8 +810,8 @@ export function TerminalPage() {
 			betSizing?: BetSizing;
 			category?: string;
 			winnerFilter?: WinnerFilter;
-			openFirstRow?: boolean;
 			showLoading?: boolean;
+			sides?: string[];
 		},
 	) => {
 		const requestId = ++alertsRequestSeqRef.current;
@@ -888,8 +832,7 @@ export function TerminalPage() {
 				options?.category ?? selectedCategory,
 			);
 			const winnerFilter = options?.winnerFilter ?? selectedWinnerFilter;
-			const shouldOpenFirstRow =
-				Boolean(options?.openFirstRow) || initialLoadRef.current;
+			const sides = options?.sides ?? selectedSides;
 
 			const response = await fetchAlerts(
 				page,
@@ -927,6 +870,7 @@ export function TerminalPage() {
 					maxFilter,
 					categoryFilter,
 					winnerFilter,
+					sides,
 				) < ALERTS_PAGE_SIZE &&
 				hasNext &&
 				fillCount < MAX_ALERT_FILL_PAGES
@@ -971,24 +915,7 @@ export function TerminalPage() {
 					lastAlertTimeRef.current = latestTimestamp;
 				}
 
-				if (shouldOpenFirstRow) {
-					const firstAlert = nextAlerts[0];
-					if (firstAlert) {
-						const firstRowId = createRowId(firstAlert);
-						setExpandedRows((prev) => ({ ...prev, [firstRowId]: true }));
-						if (!detailsRef.current[firstRowId]) {
-							void fetchDetailsForRow(firstRowId, firstAlert);
-						}
-					}
-				}
 				initialLoadRef.current = false;
-
-				for (const alert of nextAlerts) {
-					const rowId = createRowId(alert);
-					if (expandedRows[rowId] && !detailsRef.current[rowId]) {
-						void fetchDetailsForRow(rowId, alert);
-					}
-				}
 			}
 		} catch (error) {
 			if (requestId !== alertsRequestSeqRef.current || !isMountedRef.current) {
@@ -1333,6 +1260,32 @@ export function TerminalPage() {
 			betSizing: selectedBetSizing,
 			category: selectedCategory,
 			winnerFilter: nextWinnerFilter,
+			sides: selectedSides,
+		});
+	};
+
+	const toggleSide = (side: string, enabled: boolean) => {
+		if (backtestRunning) return;
+		switchToLiveComputation();
+
+		setSelectedSides((prev) => {
+			const next = enabled
+				? [...prev, side]
+				: prev.filter((item) => item !== side);
+
+			resetBacktestProgress();
+			void loadInsiderAlerts(currentPage, {
+				modes: selectedStrategies,
+				minPrice: minPriceFilter,
+				maxPrice: maxPriceFilter,
+				onlyBetOnce,
+				betSizing: selectedBetSizing,
+				category: selectedCategory,
+				winnerFilter: selectedWinnerFilter,
+				sides: next,
+			});
+
+			return next;
 		});
 	};
 
@@ -1421,26 +1374,11 @@ export function TerminalPage() {
 		}
 	};
 
-	const toggleDetails = (rowId: string) => {
-		if (audioCtxRef.current?.state === "suspended") {
-			void audioCtxRef.current.resume();
-		}
-
-		setExpandedRows((prev) => {
-			const next = { ...prev, [rowId]: !prev[rowId] };
-			const alert = alertsByRowId.get(rowId);
-			if (next[rowId] && !detailsRef.current[rowId] && alert) {
-				void fetchDetailsForRow(rowId, alert);
-			}
-			return next;
-		});
-	};
-
 	const changeAlertsPage = (delta: number) => {
 		switchToLiveComputation();
 		const targetPage = Math.max(1, currentPage + delta);
 		setAutoRefreshEnabled(false);
-		void loadInsiderAlerts(targetPage, { openFirstRow: true });
+		void loadInsiderAlerts(targetPage);
 	};
 
 	const changeMarketsPage = (delta: number) => {
@@ -1583,7 +1521,7 @@ export function TerminalPage() {
 			loadSyncStatus(),
 			loadInsiderStats(),
 			loadGlobalStats(),
-			loadInsiderAlerts(1, { openFirstRow: true }),
+			loadInsiderAlerts(1),
 			loadMarkets(1),
 		]);
 	}, []);
@@ -1630,6 +1568,7 @@ export function TerminalPage() {
 		onlyBetOnce,
 		selectedBetSizing,
 		selectedWinnerFilter,
+		selectedSides,
 	]);
 
 	useEffect(() => {
@@ -1649,8 +1588,8 @@ export function TerminalPage() {
 	}, []);
 
 	return (
-		<div className="terminal-app" data-theme="night">
-			<div className="container">
+		<div className="terminal-app">
+			<div className="container mx-auto max-w-6xl px-4">
 				<TerminalHeader
 					currentBlock={currentBlockText}
 					syncLabel={syncState.label}
@@ -1670,7 +1609,6 @@ export function TerminalPage() {
 					onNext={() => changeAlertsPage(1)}
 					onCategoryChange={applyCategoryFilter}
 					onWinnerFilterChange={applyWinnerFilter}
-					onToggleDetails={toggleDetails}
 				/>
 
 				<DetectionSection
@@ -1704,6 +1642,7 @@ export function TerminalPage() {
 					disabled={backtestRunning}
 					soundEnabled={soundEnabled}
 					selectedStrategies={selectedStrategies}
+					selectedSides={selectedSides}
 					onMinPriceChange={(value) =>
 						applyFilters(value, maxPriceFilter, onlyBetOnce)
 					}
@@ -1716,6 +1655,7 @@ export function TerminalPage() {
 					onBetOneDollarPerTradeChange={applyBetSizingMode}
 					onSoundToggle={setSoundEnabled}
 					onStrategyChange={setStrategyEnabled}
+					onSideToggle={toggleSide}
 				/>
 
 				<LiveTrackerCards

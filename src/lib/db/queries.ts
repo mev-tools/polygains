@@ -12,13 +12,6 @@ import {
 	vMarketSummary,
 } from "@/lib/db/schema";
 import { db } from "./init";
-import {
-	generateCacheKey,
-	getCache,
-	setCache,
-} from "@/lib/file-cache";
-
-const CACHE_TTL_MS = 30_000; // 30 second cache for API responses
 
 const parseCursorNumber = (value: unknown): number | undefined => {
 	if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -214,35 +207,27 @@ export async function getInsiderAlerts(
 		.groupBy(marketTokens.marketConditionId)
 		.as("resolved_winner_by_condition");
 
-	// Trigger price should stay anchored to the alert-time fill price.
-	// Keep strict 0.95 cap, but allow tiny float jitter at the boundary.
 	const triggerPriceFilter = sql`coalesce(${vInsidersEnriched.alertPrice}, ${vInsidersEnriched.lastPrice}, 0) <= ${ALERT_MAX_TRIGGER_PRICE + ALERT_PRICE_EPSILON}`;
 	const normalizedCategory = category?.trim();
 	const categoryFilter = normalizedCategory
-		? sql`coalesce(${marketsTable.outcomeTags}, '') ilike ${`%${normalizedCategory}%`}`
+		? sql`coalesce(${vInsidersEnriched.outcomeTags}, '') ilike ${`%${normalizedCategory}%`}`
 		: undefined;
 	const combinedFilter = categoryFilter
 		? and(triggerPriceFilter, categoryFilter)
 		: triggerPriceFilter;
 
-	// Get total count
 	const countBase = db
 		.select({ count: sql<number>`CAST(count(*) AS DOUBLE PRECISION)` })
-		.from(vInsidersEnriched)
-		.leftJoin(
-			marketsTable,
-			eq(vInsidersEnriched.conditionId, marketsTable.conditionId),
-		);
+		.from(vInsidersEnriched);
 	const countResult = await countBase.where(combinedFilter);
 	const total = Number(countResult[0]?.count || 0);
 
-	// Get paginated alerts
 	const insidersBase = db
 		.select({
 			account: vInsidersEnriched.account,
 			volume: vInsidersEnriched.volume,
 			detectedAt: sql<number | null>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
-			marketCount: sql<number>`CAST(${vInsidersEnriched.marketCount} AS DOUBLE PRECISION)`,
+			marketCount: vInsidersEnriched.marketCount,
 			outcome: vInsidersEnriched.outcome,
 			winner: vInsidersEnriched.winner,
 			closed: vInsidersEnriched.closed,
@@ -261,16 +246,12 @@ export async function getInsiderAlerts(
 					end
 				`,
 			walletAddress: accountWalletMap.walletAddress,
-			marketTags: marketsTable.outcomeTags,
+			marketTags: vInsidersEnriched.outcomeTags,
 		})
 		.from(vInsidersEnriched)
 		.leftJoin(
 			accountWalletMap,
 			eq(vInsidersEnriched.account, accountWalletMap.accountHash),
-		)
-		.leftJoin(
-			marketsTable,
-			eq(vInsidersEnriched.conditionId, marketsTable.conditionId),
 		)
 		.leftJoin(
 			resolvedWinnerByCondition,
@@ -383,9 +364,6 @@ export async function getMarkets(
 	closed?: boolean,
 ) {
 	const now = Date.now();
-	// Calculate total market volume per conditionId to identify top markets
-	// Sort by Hacker News ranking algorithm: Score = (P - 1) / (T + 2)^G
-	// P = Volume, T = age in hours, G = 1.8
 	const closedFilter =
 		closed === undefined ? undefined : eq(vMarketSummary.closed, closed);
 	const activeFilter = eq(marketsTable.active, true);
@@ -435,7 +413,6 @@ export async function getMarkets(
 		return { total, markets: [] };
 	}
 
-	// Fetch all outcomes for the selected conditionIds
 	const conditionIds = marketVolumes
 		.map((m) => m.conditionId)
 		.filter((id): id is string => id !== null);
@@ -487,7 +464,6 @@ export async function getMarkets(
 		]),
 	);
 
-	// Flatten and enrich with market-level totals
 	const markets = allOutcomes.map((outcome) => {
 		const marketTotal = marketVolumes.find(
 			(mv) => mv.conditionId === outcome.conditionId,
@@ -559,7 +535,6 @@ export async function getMarketByCondition(conditionId: string) {
 }
 
 export async function getGlobalStats() {
-	// Total unique insider hashes
 	const accountsResult = await db
 		.select({
 			count: sql<number>`CAST(count(distinct ${insiderPositions.accountHash}) AS DOUBLE PRECISION)`,
@@ -567,7 +542,6 @@ export async function getGlobalStats() {
 		.from(insiderPositions);
 	const total_accounts = Number(accountsResult[0]?.count || 0);
 
-	// Get markets count
 	const marketsResult = await db
 		.select({
 			count: sql<number>`CAST(count(distinct ${tokenMarketLookup.conditionId}) AS DOUBLE PRECISION)`,
@@ -576,7 +550,6 @@ export async function getGlobalStats() {
 		.where(isNotNull(tokenMarketLookup.conditionId));
 	const total_markets = Number(marketsResult[0]?.count || 0);
 
-	// Get token stats
 	const tokenStatsResult = await db
 		.select({
 			total_trades: sql<number>`CAST(sum(coalesce(${tokenStats.totalTrades}, 0)) AS DOUBLE PRECISION)`,
@@ -626,55 +599,54 @@ export async function getCategories() {
 	});
 }
 
-
-// --- OPTIMIZED QUERIES WITH FILE CACHING ---
+// --- OPTIMIZED QUERIES ---
 
 const ALERTS_CACHE_LIMIT = 6;
 const MARKETS_CACHE_LIMIT = 4;
 
+export interface AlertItem {
+	price: number;
+	user: string;
+	volume: number;
+	alert_time: number;
+	market_count: number;
+	outcome: string | null;
+	winner: boolean | null;
+	closed: boolean | null;
+	conditionId: string | null;
+	question: string | null;
+	tokenId: string | null;
+	market_price: number;
+	walletAddress?: string;
+	category: string | null;
+}
+
 /**
- * Optimized alerts query - fetches only 6 most recent alerts with file caching
- * Uses Drizzle ORM with proper column mapping for better maintainability
+ * Optimized alerts query - fetches only 6 most recent alerts
  */
 export async function getInsiderAlertsOptimized(
 	category?: string,
 ): Promise<{ total: number; alerts: AlertItem[] }> {
-	const cacheKey = generateCacheKey(
-		`alerts:optimized:${category ?? "all"}`,
-	);
-
-	// Try cache first
-	const cached = await getCache<{ total: number; alerts: AlertItem[] }>(cacheKey);
-	if (cached !== undefined) {
-		return cached;
-	}
-
 	const normalizedCategory = category?.trim();
 	const triggerPriceFilter = sql`coalesce(${vInsidersEnriched.alertPrice}, ${vInsidersEnriched.lastPrice}, 0) <= ${ALERT_MAX_TRIGGER_PRICE + ALERT_PRICE_EPSILON}`;
 	const categoryFilter = normalizedCategory
-		? sql`coalesce(${marketsTable.outcomeTags}, '') ilike ${`%${normalizedCategory}%`}`
+		? sql`coalesce(${vInsidersEnriched.outcomeTags}, '') ilike ${`%${normalizedCategory}%`}`
 		: undefined;
 	const combinedFilter = categoryFilter
 		? and(triggerPriceFilter, categoryFilter)
 		: triggerPriceFilter;
 
-	// Get total count in parallel with fetching alerts
 	const countPromise = db
 		.select({ count: sql<number>`CAST(count(*) AS DOUBLE PRECISION)` })
 		.from(vInsidersEnriched)
-		.leftJoin(
-			marketsTable,
-			eq(vInsidersEnriched.conditionId, marketsTable.conditionId),
-		)
 		.where(combinedFilter);
 
-	// Get top 6 alerts with all joins - single optimized query
 	const alertsPromise = db
 		.select({
 			account: vInsidersEnriched.account,
 			volume: vInsidersEnriched.volume,
 			detectedAt: sql<number | null>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
-			marketCount: sql<number>`CAST(${vInsidersEnriched.marketCount} AS DOUBLE PRECISION)`,
+			marketCount: vInsidersEnriched.marketCount,
 			outcome: vInsidersEnriched.outcome,
 			winner: vInsidersEnriched.winner,
 			closed: vInsidersEnriched.closed,
@@ -683,14 +655,10 @@ export async function getInsiderAlertsOptimized(
 			tokenId: vInsidersEnriched.tokenId,
 			alertPrice: vInsidersEnriched.alertPrice,
 			lastPrice: vInsidersEnriched.lastPrice,
-			marketTags: marketsTable.outcomeTags,
+			marketTags: vInsidersEnriched.outcomeTags,
 			walletAddress: accountWalletMap.walletAddress,
 		})
 		.from(vInsidersEnriched)
-		.leftJoin(
-			marketsTable,
-			eq(vInsidersEnriched.conditionId, marketsTable.conditionId),
-		)
 		.leftJoin(
 			accountWalletMap,
 			eq(vInsidersEnriched.account, accountWalletMap.accountHash),
@@ -702,7 +670,6 @@ export async function getInsiderAlertsOptimized(
 	const [countResult, insiders] = await Promise.all([countPromise, alertsPromise]);
 	const total = Number(countResult[0]?.count || 0);
 
-	// Fetch resolved winners for the alerts we found
 	const conditionIds = insiders
 		.map((i) => i.conditionId)
 		.filter((id): id is string => id !== null);
@@ -765,12 +732,10 @@ export async function getInsiderAlertsOptimized(
 		};
 	});
 
-	const payload = { total, alerts };
-	await setCache(cacheKey, payload, CACHE_TTL_MS);
-	return payload;
+	return { total, alerts };
 }
 
-interface OptimizedMarketOutcome {
+export interface OptimizedMarketOutcome {
 	conditionId: string | null;
 	question: string;
 	outcome: string | null;
@@ -790,22 +755,11 @@ interface OptimizedMarketOutcome {
 }
 
 /**
- * Optimized markets query - fetches only 4 top markets with file caching
- * Uses Hacker News scoring for ranking
+ * Optimized markets query - fetches only 4 top markets with volume pre-filter
  */
 export async function getMarketsOptimized(
 	closed?: boolean,
 ): Promise<{ total: number; markets: OptimizedMarketOutcome[] }> {
-	const cacheKey = generateCacheKey(
-		`markets:optimized:${closed ?? "all"}`,
-	);
-
-	// Try cache first
-	const cached = await getCache<{ total: number; markets: OptimizedMarketOutcome[] }>(cacheKey);
-	if (cached !== undefined) {
-		return cached;
-	}
-
 	const now = Date.now();
 	const closedFilter =
 		closed === undefined ? undefined : eq(vMarketSummary.closed, closed);
@@ -814,7 +768,41 @@ export async function getMarketsOptimized(
 		? and(activeFilter, closedFilter)
 		: activeFilter;
 
-	// Get total count
+	const topMarketsSubquery = db
+		.select({
+			conditionId: vMarketSummary.conditionId,
+			totalMarketVol: sql<number>`sum(coalesce(${vMarketSummary.totalVol}, 0))`.as("total_market_vol"),
+			totalMarketTrades: sql<number>`sum(coalesce(${vMarketSummary.totalTrades}, 0))`.as("total_market_trades"),
+			minCreatedAt: sql<number>`min(${vMarketSummary.createdAt})`.as("min_created_at"),
+		})
+		.from(vMarketSummary)
+		.leftJoin(
+			marketsTable,
+			eq(vMarketSummary.conditionId, marketsTable.conditionId),
+		)
+		.where(and(marketFilter, sql`${vMarketSummary.totalVol} > 0`))
+		.groupBy(vMarketSummary.conditionId)
+		.as("top_markets_subquery");
+
+	const hnScoreSql = sql<number>`
+		(${topMarketsSubquery.totalMarketVol} - 1.0) /
+		POWER(
+			((CAST(${now} AS DOUBLE PRECISION) - CAST(${topMarketsSubquery.minCreatedAt} AS DOUBLE PRECISION)) / 3600000.0) + 2.0,
+			1.8
+		)
+	`.as("hn_score");
+
+	const marketVolumes = await db
+		.select({
+			conditionId: topMarketsSubquery.conditionId,
+			totalMarketVol: topMarketsSubquery.totalMarketVol,
+			totalMarketTrades: topMarketsSubquery.totalMarketTrades,
+			hnScore: hnScoreSql,
+		})
+		.from(topMarketsSubquery)
+		.orderBy(desc(hnScoreSql))
+		.limit(MARKETS_CACHE_LIMIT);
+
 	const totalResult = await db
 		.select({
 			count: sql<number>`CAST(count(distinct ${vMarketSummary.conditionId}) AS DOUBLE PRECISION)`,
@@ -827,40 +815,10 @@ export async function getMarketsOptimized(
 		.where(marketFilter);
 	const total = Number(totalResult[0]?.count || 0);
 
-	// Get top 4 markets by HN score using raw SQL for the complex calculation
-	// Use SUM for totalVol since we're grouping by condition_id
-	const hnScoreSql = sql<number>`
-		(sum(CAST(coalesce(${vMarketSummary.totalVol}, 0) AS DOUBLE PRECISION)) - 1.0) /
-		POWER(
-			((CAST(${now} AS DOUBLE PRECISION) - MIN(CAST(${vMarketSummary.createdAt} AS DOUBLE PRECISION))) / 3600000.0) + 2.0,
-			1.8
-		)
-	`.as("hn_score");
-
-	const marketVolumesBase = db
-		.select({
-			conditionId: vMarketSummary.conditionId,
-			totalMarketVol: sql<number>`CAST(sum(coalesce(${vMarketSummary.totalVol}, 0)::double precision) AS DOUBLE PRECISION)`,
-			totalMarketTrades: sql<number>`CAST(sum(coalesce(${vMarketSummary.totalTrades}, 0)) AS DOUBLE PRECISION)`,
-			hnScore: hnScoreSql,
-		})
-		.from(vMarketSummary)
-		.leftJoin(
-			marketsTable,
-			eq(vMarketSummary.conditionId, marketsTable.conditionId),
-		)
-		.where(marketFilter)
-		.groupBy(vMarketSummary.conditionId)
-		.orderBy(desc(hnScoreSql))
-		.limit(MARKETS_CACHE_LIMIT);
-
-	const marketVolumes = await marketVolumesBase;
-
 	if (marketVolumes.length === 0) {
 		return { total, markets: [] };
 	}
 
-	// Fetch all outcomes for the selected conditionIds
 	const conditionIds = marketVolumes
 		.map((m) => m.conditionId)
 		.filter((id): id is string => id !== null);
@@ -887,7 +845,6 @@ export async function getMarketsOptimized(
 		.from(vMarketSummary)
 		.where(allOutcomesFilter);
 
-	// Get insider trade counts for these tokens
 	const tokenIds = Array.from(
 		new Set(
 			allOutcomes
@@ -915,12 +872,10 @@ export async function getMarketsOptimized(
 		]),
 	);
 
-	// Build hn_score map from marketVolumes
 	const hnScoreByCondition = new Map(
-		marketVolumes.map((m) => [m.conditionId, m.hnScore]),
+		marketVolumes.map((m) => [m.conditionId, Number(m.hnScore || 0)]),
 	);
 
-	// Combine and format results
 	const markets: OptimizedMarketOutcome[] = allOutcomes.map((outcome) => {
 		const marketTotal = marketVolumes.find(
 			(mv) => mv.conditionId === outcome.conditionId,
@@ -937,7 +892,7 @@ export async function getMarketsOptimized(
 			last_price: Number(outcome.lastPrice || 0),
 			total_market_vol: Number(marketTotal?.totalMarketVol || 0),
 			total_market_trades: Number(marketTotal?.totalMarketTrades || 0),
-			hn_score: Number(hnScoreByCondition.get(outcome.conditionId) || 0),
+			hn_score: hnScoreByCondition.get(outcome.conditionId) ?? 0,
 			insider_trade_count: insiderTradeCountByToken.get(tokenIdKey) ?? 0,
 			mean: outcome.mean !== null ? Number(outcome.mean) : null,
 			stdDev: outcome.stdDev !== null ? Number(outcome.stdDev) : null,
@@ -946,10 +901,7 @@ export async function getMarketsOptimized(
 		};
 	});
 
-	// Sort by hn_score descending (marketVolumes order)
 	markets.sort((a, b) => b.hn_score - a.hn_score);
 
-	const payload = { total, markets };
-	await setCache(cacheKey, payload, CACHE_TTL_MS);
-	return payload;
+	return { total, markets };
 }

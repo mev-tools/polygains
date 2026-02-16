@@ -287,6 +287,7 @@ export const vInsidersEnriched = pgView("v_insiders_enriched").as((qb) =>
 			conditionId: tokenMarketLookup.conditionId,
 			question: markets.question,
 			slug: markets.slug,
+			outcomeTags: markets.outcomeTags, // Added this
 			lastPrice: tokenStats.lastPrice,
 			marketTotalVolume: tokenStats.totalVol,
 			winner: marketTokens.winner,

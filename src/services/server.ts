@@ -38,16 +38,32 @@ const CACHE_TTL_MS = 30_000;
 const STATIC_PUBLIC_DIR = path.resolve(process.cwd(), "public", "dist");
 const STATIC_ROOT_PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
-const CORS_HEADERS = {
-	"Access-Control-Allow-Origin": "*", // You can restrict this to "http://localhost:3000" in production
-	"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-	"Access-Control-Allow-Headers": "Content-Type, Authorization",
+const getCorsHeaders = (req: Request): Record<string, string> => {
+	const origin = req.headers.get("origin") ?? "";
+	const allowedOrigins = [
+		"https://polygains.com",
+		"https://www.polygains.com",
+		"http://localhost:3001",
+		"http://127.0.0.1:3001",
+	];
+	
+	// Allow if origin matches or if no origin (same-origin requests)
+	const allowOrigin = (!origin || allowedOrigins.includes(origin)) 
+		? (origin || "*") 
+		: allowedOrigins[0];
+	
+	return {
+		"Access-Control-Allow-Origin": allowOrigin,
+		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type, Authorization",
+		"Access-Control-Allow-Credentials": "true",
+	};
 };
 
-const json = (body: unknown, status = 200, cacheGeneration?: number): Response => {
+const json = (body: unknown, status = 200, cacheGeneration?: number, req?: Request): Response => {
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
-		...CORS_HEADERS,
+		...getCorsHeaders(req || new Request("http://localhost")),
 	};
 	// Add cache headers for cacheable responses
 	if (cacheGeneration !== undefined) {
@@ -103,6 +119,7 @@ const getContentType = (filePath: string): string => {
 async function serveStaticFile(
 	filePath: string,
 	acceptEncoding: string | null,
+	req?: Request,
 ): Promise<Response> {
 	const contentType = getContentType(filePath);
 	const file = Bun.file(filePath);
@@ -123,7 +140,7 @@ async function serveStaticFile(
 		return new Response(file, {
 			headers: {
 				"Content-Type": contentType,
-				...CORS_HEADERS,
+				...getCorsHeaders(req || new Request("http://localhost")),
 			},
 		});
 	}
@@ -136,7 +153,7 @@ async function serveStaticFile(
 				"Content-Type": contentType,
 				"Content-Encoding": "zstd",
 				"Cache-Control": "public, max-age=31536000, immutable",
-				...CORS_HEADERS,
+				...getCorsHeaders(req || new Request("http://localhost")),
 			},
 		});
 	}
@@ -151,7 +168,7 @@ async function serveStaticFile(
 			"Content-Type": contentType,
 			"Content-Encoding": "zstd",
 			"Cache-Control": "public, max-age=31536000, immutable",
-			...CORS_HEADERS,
+			...getCorsHeaders(req || new Request("http://localhost")),
 		},
 	});
 }
@@ -183,16 +200,16 @@ export function createServer() {
 
 			// Add OPTIONS handling for CORS
 			if (req.method === "OPTIONS") {
-				return new Response(null, { headers: CORS_HEADERS });
+				return new Response(null, { headers: getCorsHeaders(req) });
 			}
 
 			if (url.pathname === "/health" || url.pathname === "/api/health") {
-				return json({ status: "ok" });
+				return json({ status: "ok" }, 200, undefined, req);
 			}
 
 			if (url.pathname === "/stats" || url.pathname === "/api/stats") {
 				const stats = await getInsiderStats();
-				return json(stats);
+				return json(stats, 200, undefined, req);
 			}
 
 			if (
@@ -200,12 +217,12 @@ export function createServer() {
 				url.pathname === "/api/global-stats"
 			) {
 				const stats = await getGlobalStats();
-				return json(stats);
+				return json(stats, 200, undefined, req);
 			}
 
 			if (url.pathname === "/categories" || url.pathname === "/api/categories") {
 				const categories = await getCategories();
-				return json(categories);
+				return json(categories, 200, undefined, req);
 			}
 
 			if (
@@ -214,12 +231,18 @@ export function createServer() {
 				url.pathname === "/api/top-liquidity-markets" ||
 				url.pathname === "/top-liquidity-markets"
 			) {
+				const cacheKey = generateCacheKey(url.toString());
+				const cached = await getCache<{ data: any; pagination: any }>(cacheKey);
+				if (cached) return json(cached, 200, undefined, req);
+
 				// Use optimized version with file caching - always returns 4 top markets
 				const closed = parseOptionalBoolean(url.searchParams.get("close"));
 				const { markets, total } = await getMarketsOptimized(closed);
 				// Return as page 1 with limit 4 for compatibility
 				const pagination = makePagination(1, 4, total);
-				return json({ data: markets, pagination });
+				const responseData = { data: markets, pagination };
+				await setCache(cacheKey, responseData, CACHE_TTL_MS);
+				return json(responseData, 200, undefined, req);
 			}
 
 			if (
@@ -228,12 +251,12 @@ export function createServer() {
 				url.pathname.startsWith("/market/")
 			) {
 				const conditionId = url.pathname.split("/").pop();
-				if (!conditionId) return json({ error: "Missing conditionId" }, 400);
+				if (!conditionId) return json({ error: "Missing conditionId" }, 400, undefined, req);
 
 				const market = await getMarketByCondition(conditionId);
-				if (!market) return json({ error: "Market not found" }, 404);
+				if (!market) return json({ error: "Market not found" }, 404, undefined, req);
 
-				return json(market);
+				return json(market, 200, undefined, req);
 			}
 
 			if (url.pathname === "/api/insiders" || url.pathname === "/insiders") {
@@ -251,7 +274,7 @@ export function createServer() {
 				const total = insiders.length;
 				const pagedInsiders = insiders.slice(offset, offset + limit);
 				const pagination = makePagination(page, limit, total);
-				return json({ data: pagedInsiders, pagination });
+				return json({ data: pagedInsiders, pagination }, 200, undefined, req);
 			}
 
 			if (
@@ -259,7 +282,7 @@ export function createServer() {
 				url.pathname.startsWith("/insider-trades/")
 			) {
 				const address = url.pathname.split("/").pop();
-				if (!address) return json({ error: "Missing address" }, 400);
+				if (!address) return json({ error: "Missing address" }, 400, undefined, req);
 
 				const page = parsePositiveInt(
 					url.searchParams.get("page"),
@@ -276,7 +299,7 @@ export function createServer() {
 				const pagedTrades = trades.slice(offset, offset + limit);
 				const pagination = makePagination(page, limit, total);
 
-				return json({ data: pagedTrades, pagination });
+				return json({ data: pagedTrades, pagination }, 200, undefined, req);
 			}
 
 			if (
@@ -287,11 +310,11 @@ export function createServer() {
 				const isApiRoute = parts[1] === "api";
 				const address = isApiRoute ? parts[3] : parts[2];
 
-				if (!address) return json({ error: "Missing address" }, 400);
+				if (!address) return json({ error: "Missing address" }, 400, undefined, req);
 
 				if (url.pathname.endsWith("/stats")) {
 					const stats = await getInsiderStats();
-					return json(stats);
+					return json(stats, 200, undefined, req);
 				}
 
 				if (url.pathname.endsWith("/trades")) {
@@ -309,22 +332,28 @@ export function createServer() {
 					const total = trades.length;
 					const pagedTrades = trades.slice(offset, offset + limit);
 					const pagination = makePagination(page, limit, total);
-					return json({ data: pagedTrades, pagination });
+					return json({ data: pagedTrades, pagination }, 200, undefined, req);
 				}
 			}
 
 			if (url.pathname === "/api/alerts" || url.pathname === "/alerts") {
+				const cacheKey = generateCacheKey(url.toString());
+				const cached = await getCache<{ data: any; pagination: any }>(cacheKey);
+				if (cached) return json(cached, 200, undefined, req);
+
 				// Use optimized version with file caching - always returns 6 most recent
 				const category = parseOptionalString(url.searchParams.get("category"));
 				const { alerts, total } = await getInsiderAlertsOptimized(category);
 				// Return as page 1 with limit 6 for compatibility
 				const pagination = makePagination(1, 6, total);
-				return json({ data: alerts, pagination });
+				const responseData = { data: alerts, pagination };
+				await setCache(cacheKey, responseData, CACHE_TTL_MS);
+				return json(responseData, 200, undefined, req);
 			}
 
 			if (url.pathname === "/api/block" || url.pathname === "/block") {
 				const block = await getCurrentBlock();
-				return json({ block });
+				return json({ block }, 200, undefined, req);
 			}
 
 			if (req.method === "GET" || req.method === "HEAD") {
@@ -338,13 +367,13 @@ export function createServer() {
 				// First, check public/dist for built frontend assets
 				const distPath = path.resolve(STATIC_PUBLIC_DIR, relativePath);
 				if (distPath.startsWith(STATIC_PUBLIC_DIR) && existsSync(distPath)) {
-					return serveStaticFile(distPath, acceptEncoding);
+					return serveStaticFile(distPath, acceptEncoding, req);
 				}
 
 				// Then, check public/ root for static files (favicons, etc.)
 				const publicPath = path.resolve(STATIC_ROOT_PUBLIC_DIR, relativePath);
 				if (publicPath.startsWith(STATIC_ROOT_PUBLIC_DIR) && existsSync(publicPath)) {
-					return serveStaticFile(publicPath, acceptEncoding);
+					return serveStaticFile(publicPath, acceptEncoding, req);
 				}
 
 				// Handle /mainv2 with noindex canonical
@@ -380,7 +409,7 @@ export function createServer() {
 				if (!path.extname(relativePath)) {
 					const indexPath = path.join(STATIC_PUBLIC_DIR, "index.html");
 					if (existsSync(indexPath)) {
-						return serveStaticFile(indexPath, acceptEncoding);
+						return serveStaticFile(indexPath, acceptEncoding, req);
 					}
 				}
 			}
@@ -412,7 +441,12 @@ export function createServer() {
 </html>`;
 			return new Response(notFoundHtml, {
 				status: 404,
-				headers: { "Content-Type": "text/html; charset=utf-8", ...CORS_HEADERS },
+				headers: { 
+					"Content-Type": "text/html; charset=utf-8", 
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type, Authorization",
+				},
 			});
 		},
 	});

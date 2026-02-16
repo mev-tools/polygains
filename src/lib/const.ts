@@ -11,3 +11,4 @@ export const FIFTEEN_MINUTES = 15 * 60; // 900 seconds
 export const MIN_PRICE = 0.95;
 export const BPS_SCALE = 10000n;
 export const MIN_PRICE_BPS = (10000n / 100n) * 95n;
+export const UPSERT_CHUNK_SIZE = 1_000;

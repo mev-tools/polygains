@@ -16,23 +16,16 @@ import {
 	NotInsiderDetector,
 	XXHash32Set,
 } from "./detector";
-import { BloomFilterPersistor } from "./persistor";
+import { BloomFilterPersistor } from "./filter-persistor";
 import {
 	AccountAddressMapPersistor,
 	InsiderPositionsPersistor,
 	MarketStatsPersistor,
 } from "./positions-persistor";
 
-export { InsiderEvaluator, type TraderData, WindowBuffer } from "./buffer";
+export {  type TraderData, WindowBuffer } from "./buffer";
 
-const toBigInt = (value: number | bigint) =>
-	typeof value === "bigint" ? value : BigInt(value);
 
-const toTokenId = (value: string | number | bigint) =>
-	typeof value === "bigint" ? value.toString() : String(value);
-
-const toUsdVolume = (usdc: bigint): number =>
-	Number(usdc) / Number(USDC_DENOMINATOR);
 
 export class PolymarketPipe {
 	private cursor?: BlockCursor;

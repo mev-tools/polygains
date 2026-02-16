@@ -18,7 +18,6 @@ import {
 	readEnv,
 	readPort,
 } from "@/lib/utils";
-import { Cache, getCacheGeneration, getCacheStats, invalidateCache } from "@/lib/cache";
 import { generateCacheKey, getCache, setCache } from "@/lib/file-cache";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -180,10 +179,6 @@ export function createServer() {
 		? Number.parseInt(process.env.IDLE_TIMEOUT_SEC, 10)
 		: DEFAULT_IDLE_TIMEOUT_SEC;
 
-	// Global generation-based caches - invalidated when data changes
-	const statsCache = new Cache<unknown>(CACHE_TTL_MS);
-	const categoriesCache = new Cache<unknown>(CACHE_TTL_MS);
-	const blockCache = new Cache<unknown>(CACHE_TTL_MS);
 
 	const server = Bun.serve({
 		hostname: host,

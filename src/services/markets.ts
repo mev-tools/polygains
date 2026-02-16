@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-
+import {sleep} from Bun
 import { db } from "@/lib/db/init";
 import { markets, marketTokens, tokenMarketLookup } from "@/lib/db/schema";
 import type {
@@ -8,19 +8,7 @@ import type {
 	FlatMarket,
 } from "@/lib/types";
 
-const CLOB_API = "https://clob.polymarket.com/markets";
-const UPSERT_CHUNK_SIZE = 1_000;
 
-const chunk = <T>(items: T[], size = UPSERT_CHUNK_SIZE): T[][] => {
-	if (items.length === 0) return [];
-	const out: T[][] = [];
-	for (let i = 0; i < items.length; i += size) {
-		out.push(items.slice(i, i + size));
-	}
-	return out;
-};
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeTags = (tags: unknown): string[] => {
 	if (!Array.isArray(tags)) return [];

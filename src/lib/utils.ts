@@ -53,3 +53,22 @@ export const normalizeInt32 = (value: unknown): number | null => {
 	if (!Number.isInteger(value)) return null;
 	return value | 0;
 };
+
+
+export const chunk = <T>(items: T[], size = UPSERT_CHUNK_SIZE): T[][] => {
+	if (items.length === 0) return [];
+	const out: T[][] = [];
+	for (let i = 0; i < items.length; i += size) {
+		out.push(items.slice(i, i + size));
+	}
+	return out;
+};
+
+const toBigInt = (value: number | bigint) =>
+	typeof value === "bigint" ? value : BigInt(value);
+
+const toTokenId = (value: string | number | bigint) =>
+	typeof value === "bigint" ? value.toString() : String(value);
+
+const toUsdVolume = (usdc: bigint): number =>
+	Number(usdc) / Number(USDC_DENOMINATOR);

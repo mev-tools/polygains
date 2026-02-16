@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { BlockCursor } from "@subsquid/pipes";
 import { loadDetector, saveDetector } from "@/lib/db/bloomfilter";
 import { XXHash32Set } from "@/lib/hashset";
-import { BloomFilterPersistor } from "@/services/persistor";
+import { BloomFilterPersistor } from "@/services/filter-persistor";
 
 describe("BloomFilterPersistor Integration Tests", () => {
 	// Clean up test snapshots before each test

@@ -33,14 +33,21 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "✨ All services started!"
 	@echo ""
 	@echo "📊 Service URLs:"
-	@echo "   API Server:  http://127.0.0.1:4069"
-	@echo "   Frontend:    http://127.0.0.1:3001"
-	@echo "   Public URL:  https://polygains.com (when cloudflared tunnel is running)"
+	@echo "   API Server:  https://api.polygains.com"
+	@echo "   Frontend:    https://polygains.com (served via R2)"
 	@echo ""
 	@echo "📝 Useful commands:"
 	@echo "   make status  - View service status"
 	@echo "   make logs    - View all logs"
 	@echo "   make stop    - Stop all services"
+	@echo "   make deploy-frontend - Build and deploy frontend to R2"
+
+deploy-frontend: ## Build and deploy frontend to R2
+	@echo "🏗️  Building frontend..."
+	@cd frontend && bun install && bun build.ts
+	@echo "🚀 Deploying to R2 (polygains-web)..."
+	@npx wrangler r2 object sync polygains-web --directory ./public/dist
+	@echo "✅ Frontend deployed to https://polygains.com"
 
 stop: ## Stop all services
 	@echo "🛑 Stopping all services..."

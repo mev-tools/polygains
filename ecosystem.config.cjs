@@ -34,6 +34,7 @@ module.exports = {
 			args: "src/main.ts",
 			cwd: __dirname,
 		},
+		/*
 		{
 			...commonApp,
 			name: "frontend",
@@ -53,6 +54,7 @@ module.exports = {
 			interpreter: "bash",
 			cwd: __dirname,
 		},
+		*/
 		{
 			...commonApp,
 			name: "cloudflared",

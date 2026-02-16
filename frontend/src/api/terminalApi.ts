@@ -23,6 +23,14 @@ function getConfiguredApiBase(): string {
 			? process.env?.BUN_PUBLIC_API_BASE_URL
 			: undefined) ?? "";
 	const raw = envBase.trim();
+
+	if (typeof window !== "undefined" && window.location?.hostname) {
+		const hostname = window.location.hostname;
+		if (hostname === "polygains.com" || hostname === "www.polygains.com") {
+			return "https://api.polygains.com";
+		}
+	}
+
 	if (!raw && typeof window !== "undefined" && window.location?.origin) {
 		return window.location.origin;
 	}

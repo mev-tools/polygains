@@ -23,9 +23,9 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "🗄️  Preparing database schema..."
 	@$(MAKE) db-prepare
 	@echo ""
-	@echo "🏗️  Building frontend to ./public ..."
-	@cd frontend && bun install && bun run build --outdir=../public
-	@echo "✅ Frontend built in ./public"
+	@echo "🏗️  Building frontend to ./public/dist ..."
+	@cd frontend && bun install && bun run build
+	@echo "✅ Frontend built in ./public/dist"
 	@echo ""
 	@echo "🔧 Starting services with PM2..."
 	@bunx pm2 start ecosystem.config.cjs
@@ -198,8 +198,8 @@ stop-local: ## Stop local postgres
 
 build-frontend: ## Build frontend for production
 	@echo "🏗️  Building frontend..."
-	cd frontend && bun install && bun run build --outdir=../public
-	@echo "✅ Frontend built!"
+	cd frontend && bun install && bun run build
+	@echo "✅ Frontend built in ./public/dist!"
 
 build: ## Build the project
 	docker compose build

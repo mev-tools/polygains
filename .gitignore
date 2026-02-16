@@ -40,4 +40,4 @@ keys/
 .pgsocket
 chunk**.js
 
-**/public/chunk**
+**/public/dist/chunk**

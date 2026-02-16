@@ -93,7 +93,7 @@ export function MainV2Page() {
 							<h1 className="text-xl font-bold tracking-tight text-white/90">
 								Insider Alerts
 							</h1>
-							<div className="flex items-center gap-3 text-xs font-medium text-white/50 mt-1">
+							<div className="flex items-center gap-3 text-xs font-medium text-white/70 mt-1">
 								<span>{alerts.length} signals</span>
 								<span className="w-1 h-1 rounded-full bg-white/20" />
 								<span className="flex items-center gap-1.5 text-emerald-400/90">
@@ -113,12 +113,14 @@ export function MainV2Page() {
 							{categories.map((cat) => (
 								<button
 									key={cat}
-									className={`btn btn-sm border-0 font-medium tracking-wide transition-all duration-200 whitespace-nowrap ${
+									className={`btn btn-sm border-0 font-medium tracking-wide transition-all duration-200 whitespace-nowrap min-h-[44px] ${
 										activeCategory === cat
 											? "bg-white/10 text-white shadow-sm ring-1 ring-white/20"
-											: "bg-transparent text-white/40 hover:text-white/70 hover:bg-white/5"
+											: "bg-transparent text-white/70 hover:text-white/70 hover:bg-white/5"
 									}`}
 									onClick={() => setActiveCategory(cat)}
+									aria-pressed={activeCategory === cat}
+									aria-label={`Filter by category ${cat}`}
 								>
 									{cat}
 								</button>
@@ -137,7 +139,7 @@ export function MainV2Page() {
 				{/* MOBILE VIEW: Glass List */}
 				{!loading && (
 					<div className="md:hidden space-y-3">
-						<div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-white/30">
+						<div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-white/60">
 							Recent Activity
 						</div>
 						<ul className="flex flex-col gap-3">
@@ -164,8 +166,8 @@ export function MainV2Page() {
 											<div className="text-sm font-medium leading-snug text-white/90 line-clamp-2">
 												{item.question}
 											</div>
-											<div className="flex items-center gap-2 text-[11px] font-medium text-white/40">
-												<span className="font-mono text-white/50">
+											<div className="flex items-center gap-2 text-[11px] font-medium text-white/70">
+												<span className="font-mono text-white/70">
 													{item.user?.slice(0, 6)}...{item.user?.slice(-4)}
 												</span>
 												<span className="w-0.5 h-0.5 rounded-full bg-white/20" />
@@ -180,7 +182,7 @@ export function MainV2Page() {
 											>
 												{formatMoney(item.volume)}
 											</div>
-											<div className="text-[10px] font-mono text-white/30">
+											<div className="text-[10px] font-mono text-white/60">
 												@{formatPrice(item.price)}
 											</div>
 										</div>
@@ -197,22 +199,22 @@ export function MainV2Page() {
 						<table className="table w-full border-collapse">
 							<thead>
 								<tr className="border-b border-white/5 bg-white/[0.02]">
-									<th className="py-5 px-6 text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Market
 									</th>
-									<th className="py-5 px-6 text-left text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-left text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Side
 									</th>
-									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Price
 									</th>
-									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Volume
 									</th>
-									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-right text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Time
 									</th>
-									<th className="py-5 px-6 text-center text-[10px] font-bold uppercase tracking-widest text-white/30">
+									<th className="py-5 px-6 text-center text-[10px] font-bold uppercase tracking-widest text-white/60">
 										Lookup
 									</th>
 								</tr>
@@ -229,7 +231,7 @@ export function MainV2Page() {
 												<div className="font-medium text-sm text-white/90 truncate group-hover:text-emerald-300 transition-colors">
 													{item.question}
 												</div>
-												<div className="text-[10px] font-mono text-white/30 truncate mt-1">
+												<div className="text-[10px] font-mono text-white/60 truncate mt-1">
 													{item.conditionId}
 												</div>
 											</td>
@@ -257,13 +259,14 @@ export function MainV2Page() {
 												</span>
 											</td>
 											<td className="py-4 px-6 text-right">
-												<span className="text-xs font-medium text-white/40 tabular-nums">
+												<span className="text-xs font-medium text-white/70 tabular-nums">
 													{timeAgo(item.alert_time)}
 												</span>
 											</td>
 											<td className="py-4 px-6 text-center">
 												<button
-													className="btn btn-ghost btn-xs text-white/40 hover:text-white hover:bg-white/10"
+													className="btn btn-ghost btn-sm text-white/80 hover:text-white hover:bg-white/10 min-w-[44px] min-h-[44px]"
+													aria-label={`Lookup trader ${item.user}`}
 													title={`Lookup trader ${item.user}`}
 												>
 													<svg
@@ -292,7 +295,7 @@ export function MainV2Page() {
 					<div className="flex flex-col items-center justify-center py-24 opacity-40">
 						<div className="p-4 rounded-full bg-white/5 mb-4">
 							<svg
-								className="w-8 h-8 text-white/50"
+								className="w-8 h-8 text-white/70"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"

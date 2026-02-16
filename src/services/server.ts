@@ -8,6 +8,8 @@ import {
 	getInsiderTrades,
 	getMarketByCondition,
 	getMarkets,
+	getInsiderAlertsOptimized,
+	getMarketsOptimized,
 } from "@/lib/db/queries";
 import {
 	parseOptionalBoolean,
@@ -16,15 +18,25 @@ import {
 	readEnv,
 	readPort,
 } from "@/lib/utils";
+import { Cache, getCacheGeneration, getCacheStats, invalidateCache } from "@/lib/cache";
+import { generateCacheKey, getCache, setCache } from "@/lib/file-cache";
 import { existsSync } from "node:fs";
 import path from "node:path";
+
+// ZSTD compression cache for static files
+interface CachedCompression {
+	data: Uint8Array;
+	mtime: number;
+}
+const zstdCache = new Map<string, CachedCompression>();
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 const DEFAULT_IDLE_TIMEOUT_SEC = 60;
-const MARKETS_CACHE_TTL_MS = 30_000;
-const STATIC_PUBLIC_DIR = path.resolve(process.cwd(), "public");
+const CACHE_TTL_MS = 30_000;
+const STATIC_PUBLIC_DIR = path.resolve(process.cwd(), "public", "dist");
+const STATIC_ROOT_PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 const CORS_HEADERS = {
 	"Access-Control-Allow-Origin": "*", // You can restrict this to "http://localhost:3000" in production
@@ -32,14 +44,18 @@ const CORS_HEADERS = {
 	"Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-const json = (body: unknown, status = 200): Response =>
-	new Response(JSON.stringify(body), {
-		status,
-		headers: {
-			"Content-Type": "application/json",
-			...CORS_HEADERS,
-		},
-	});
+const json = (body: unknown, status = 200, cacheGeneration?: number): Response => {
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		...CORS_HEADERS,
+	};
+	// Add cache headers for cacheable responses
+	if (cacheGeneration !== undefined) {
+		headers["X-Cache-Generation"] = String(cacheGeneration);
+		headers["Cache-Control"] = "public, max-age=5";
+	}
+	return new Response(JSON.stringify(body), { status, headers });
+};
 
 const makePagination = (page: number, limit: number, total: number) => {
 	const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -58,46 +74,99 @@ const makePagination = (page: number, limit: number, total: number) => {
 const toOffset = (page: number, limit: number): number =>
 	Math.max(0, (page - 1) * limit);
 
+// Helper to get file extension for content-type
+const getContentType = (filePath: string): string => {
+	const ext = path.extname(filePath).toLowerCase();
+	const contentTypes: Record<string, string> = {
+		".html": "text/html; charset=utf-8",
+		".htm": "text/html; charset=utf-8",
+		".js": "application/javascript; charset=utf-8",
+		".mjs": "application/javascript; charset=utf-8",
+		".css": "text/css; charset=utf-8",
+		".json": "application/json",
+		".png": "image/png",
+		".jpg": "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif": "image/gif",
+		".svg": "image/svg+xml",
+		".ico": "image/x-icon",
+		".webp": "image/webp",
+		".avif": "image/avif",
+		".xml": "application/xml",
+		".txt": "text/plain",
+		".map": "application/json",
+	};
+	return contentTypes[ext] || "application/octet-stream";
+};
+
+// Serve static file with optional zstd compression
+async function serveStaticFile(
+	filePath: string,
+	acceptEncoding: string | null,
+): Promise<Response> {
+	const contentType = getContentType(filePath);
+	const file = Bun.file(filePath);
+	const fileStat = await file.stat();
+	const mtime = fileStat.mtime?.getTime() || 0;
+
+	// Check if client supports zstd
+	const supportsZstd = acceptEncoding?.includes("zstd") ?? false;
+
+	// For binary files (images), skip compression
+	const isCompressible =
+		contentType.startsWith("text/") ||
+		contentType.includes("javascript") ||
+		contentType.includes("json") ||
+		contentType.includes("xml");
+
+	if (!supportsZstd || !isCompressible) {
+		return new Response(file, {
+			headers: {
+				"Content-Type": contentType,
+				...CORS_HEADERS,
+			},
+		});
+	}
+
+	// Check cache
+	const cached = zstdCache.get(filePath);
+	if (cached && cached.mtime === mtime) {
+		return new Response(cached.data, {
+			headers: {
+				"Content-Type": contentType,
+				"Content-Encoding": "zstd",
+				"Cache-Control": "public, max-age=31536000, immutable",
+				...CORS_HEADERS,
+			},
+		});
+	}
+
+	// Compress and cache
+	const originalData = await file.bytes();
+	const compressed = await Bun.zstdCompress(originalData);
+	zstdCache.set(filePath, { data: compressed, mtime });
+
+	return new Response(compressed, {
+		headers: {
+			"Content-Type": contentType,
+			"Content-Encoding": "zstd",
+			"Cache-Control": "public, max-age=31536000, immutable",
+			...CORS_HEADERS,
+		},
+	});
+}
+
 export function createServer() {
 	const host = readEnv("API_HOST", "HOST");
 	const port = readPort("API_PORT", "PORT");
 	const idleTimeout = process.env.IDLE_TIMEOUT_SEC
 		? Number.parseInt(process.env.IDLE_TIMEOUT_SEC, 10)
 		: DEFAULT_IDLE_TIMEOUT_SEC;
-	const marketsCache = new Map<
-		string,
-		{
-			expiresAt: number;
-			payload: {
-				data: Awaited<ReturnType<typeof getMarkets>>["markets"];
-				pagination: ReturnType<typeof makePagination>;
-			};
-		}
-	>();
-	const getCachedMarketsPayload = async (
-		page: number,
-		limit: number,
-		closed: boolean | undefined,
-		cacheNamespace: "markets" | "top-liquidity",
-	) => {
-		const cacheKey = `${cacheNamespace}:${page}-${limit}-${closed ?? "all"}`;
-		const cached = marketsCache.get(cacheKey);
-		if (cached && cached.expiresAt > Date.now()) {
-			return cached.payload;
-		}
 
-		const offset = toOffset(page, limit);
-		const { markets, total } = await getMarkets(limit, offset, closed);
-		const pagination = makePagination(page, limit, total);
-		const payload = { data: markets, pagination };
-
-		marketsCache.set(cacheKey, {
-			expiresAt: Date.now() + MARKETS_CACHE_TTL_MS,
-			payload,
-		});
-
-		return payload;
-	};
+	// Global generation-based caches - invalidated when data changes
+	const statsCache = new Cache<unknown>(CACHE_TTL_MS);
+	const categoriesCache = new Cache<unknown>(CACHE_TTL_MS);
+	const blockCache = new Cache<unknown>(CACHE_TTL_MS);
 
 	const server = Bun.serve({
 		hostname: host,
@@ -105,6 +174,12 @@ export function createServer() {
 		idleTimeout,
 		async fetch(req) {
 			const url = new URL(req.url);
+
+			// HTTPS redirect (for production behind reverse proxy)
+			const proto = req.headers.get("x-forwarded-proto");
+			if (proto === "http") {
+				return Response.redirect(`https://${url.host}${url.pathname}${url.search}`, 301);
+			}
 
 			// Add OPTIONS handling for CORS
 			if (req.method === "OPTIONS") {
@@ -139,28 +214,12 @@ export function createServer() {
 				url.pathname === "/api/top-liquidity-markets" ||
 				url.pathname === "/top-liquidity-markets"
 			) {
-				const page = parsePositiveInt(
-					url.searchParams.get("page"),
-					DEFAULT_PAGE,
-				);
-				const limit = Math.min(
-					parsePositiveInt(url.searchParams.get("limit"), DEFAULT_LIMIT),
-					MAX_LIMIT,
-				);
+				// Use optimized version with file caching - always returns 4 top markets
 				const closed = parseOptionalBoolean(url.searchParams.get("close"));
-				const cacheNamespace =
-					url.pathname === "/api/top-liquidity-markets" ||
-					url.pathname === "/top-liquidity-markets"
-						? "top-liquidity"
-						: "markets";
-				const payload = await getCachedMarketsPayload(
-					page,
-					limit,
-					closed,
-					cacheNamespace,
-				);
-
-				return json(payload);
+				const { markets, total } = await getMarketsOptimized(closed);
+				// Return as page 1 with limit 4 for compatibility
+				const pagination = makePagination(1, 4, total);
+				return json({ data: markets, pagination });
 			}
 
 			if (
@@ -255,19 +314,11 @@ export function createServer() {
 			}
 
 			if (url.pathname === "/api/alerts" || url.pathname === "/alerts") {
-				const page = parsePositiveInt(
-					url.searchParams.get("page"),
-					DEFAULT_PAGE,
-				);
-				const limit = Math.min(
-					parsePositiveInt(url.searchParams.get("limit"), DEFAULT_LIMIT),
-					MAX_LIMIT,
-				);
+				// Use optimized version with file caching - always returns 6 most recent
 				const category = parseOptionalString(url.searchParams.get("category"));
-				const offset = toOffset(page, limit);
-
-				const { alerts, total } = await getInsiderAlerts(limit, offset, category);
-				const pagination = makePagination(page, limit, total);
+				const { alerts, total } = await getInsiderAlertsOptimized(category);
+				// Return as page 1 with limit 6 for compatibility
+				const pagination = makePagination(1, 6, total);
 				return json({ data: alerts, pagination });
 			}
 
@@ -282,23 +333,87 @@ export function createServer() {
 					decodedPath === "/" ? "/index.html" : decodedPath;
 				const normalizedPath = path.posix.normalize(requestedPath);
 				const relativePath = normalizedPath.replace(/^\/+/, "");
-				const candidatePath = path.resolve(STATIC_PUBLIC_DIR, relativePath);
+				const acceptEncoding = req.headers.get("accept-encoding");
 
-				// Prevent path traversal by requiring files to stay under ./public.
-				if (candidatePath.startsWith(STATIC_PUBLIC_DIR)) {
-					if (existsSync(candidatePath)) {
-						return new Response(Bun.file(candidatePath));
-					}
-					if (!path.extname(relativePath)) {
-						const indexPath = path.join(STATIC_PUBLIC_DIR, "index.html");
-						if (existsSync(indexPath)) {
-							return new Response(Bun.file(indexPath));
+				// First, check public/dist for built frontend assets
+				const distPath = path.resolve(STATIC_PUBLIC_DIR, relativePath);
+				if (distPath.startsWith(STATIC_PUBLIC_DIR) && existsSync(distPath)) {
+					return serveStaticFile(distPath, acceptEncoding);
+				}
+
+				// Then, check public/ root for static files (favicons, etc.)
+				const publicPath = path.resolve(STATIC_ROOT_PUBLIC_DIR, relativePath);
+				if (publicPath.startsWith(STATIC_ROOT_PUBLIC_DIR) && existsSync(publicPath)) {
+					return serveStaticFile(publicPath, acceptEncoding);
+				}
+
+				// Handle /mainv2 with noindex canonical
+				if (relativePath === "mainv2") {
+					const indexPath = path.join(STATIC_PUBLIC_DIR, "index.html");
+					if (existsSync(indexPath)) {
+						let html = await Bun.file(indexPath).text();
+						// Inject noindex meta tag and canonical pointing to /
+						html = html.replace(
+							'<meta name="robots" content="index,follow,max-image-preview:large" />',
+							'<meta name="robots" content="noindex,follow" />\n    <link rel="canonical" href="https://polygains.com/" />'
+						);
+						// Compress if supported
+						if (acceptEncoding?.includes("zstd")) {
+							const compressed = await Bun.zstdCompress(
+								new TextEncoder().encode(html)
+							);
+							return new Response(compressed, {
+								headers: {
+									"Content-Type": "text/html; charset=utf-8",
+									"Content-Encoding": "zstd",
+									...CORS_HEADERS,
+								},
+							});
 						}
+						return new Response(html, {
+							headers: { "Content-Type": "text/html; charset=utf-8", ...CORS_HEADERS },
+						});
+					}
+				}
+
+				// Fallback to index.html for SPA routes
+				if (!path.extname(relativePath)) {
+					const indexPath = path.join(STATIC_PUBLIC_DIR, "index.html");
+					if (existsSync(indexPath)) {
+						return serveStaticFile(indexPath, acceptEncoding);
 					}
 				}
 			}
 
-			return json({ error: "Not Found" }, 404);
+			// Real 404 response with HTML body
+			const notFoundHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found | Polygains</title>
+    <meta name="robots" content="noindex,follow" />
+    <style>
+        body{margin:0;padding:0;background:#000;color:#10b981;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
+        .container{padding:2rem}
+        h1{font-size:4rem;margin:0 0 1rem}
+        p{color:#9ca3af;margin-bottom:2rem}
+        a{color:#10b981;text-decoration:none;border-bottom:1px solid #10b981}
+        a:hover{color:#34d399}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>404</h1>
+        <p>The page you're looking for doesn't exist.</p>
+        <p><a href="/">← Back to Polygains</a></p>
+    </div>
+</body>
+</html>`;
+			return new Response(notFoundHtml, {
+				status: 404,
+				headers: { "Content-Type": "text/html; charset=utf-8", ...CORS_HEADERS },
+			});
 		},
 	});
 

@@ -206,8 +206,8 @@ export function TerminalPage() {
 	const [currentPage, setCurrentPage] = useState(1);
 	const [alertsFilledThroughPage, setAlertsFilledThroughPage] = useState(1);
 	const [marketsCurrentPage, setMarketsCurrentPage] = useState(1);
-	const [alertsLoading, setAlertsLoading] = useState(false);
-	const [marketsLoading, setMarketsLoading] = useState(false);
+	const [alertsLoading, setAlertsLoading] = useState(true);
+	const [marketsLoading, setMarketsLoading] = useState(true);
 	const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 	const [backtestRunning, setBacktestRunning] = useState(false);
 	const [backtestCanContinue, setBacktestCanContinue] = useState(false);
@@ -252,6 +252,11 @@ export function TerminalPage() {
 	const backtestHasNextRef = useRef(false);
 	const backtestRunLockRef = useRef(false);
 	const alertsRequestSeqRef = useRef(0);
+	const syncStatusInFlightRef = useRef(false);
+	const insiderStatsInFlightRef = useRef(false);
+	const globalStatsInFlightRef = useRef(false);
+	const alertsInFlightRef = useRef(false);
+	const marketsInFlightRef = useRef(false);
 	const refreshInFlightRef = useRef(false);
 	const pendingResolutionInFlightRef = useRef(false);
 	const isMountedRef = useRef(true);
@@ -334,31 +339,59 @@ export function TerminalPage() {
 		});
 	}, [selectedCategory]);
 
+	// Optimize filtering by using a stable key for memoization comparison
+	const filterKey = useMemo(() => {
+		return `${selectedStrategies.join(',')}|${minPriceFilter}|${maxPriceFilter}|${selectedCategory}|${selectedWinnerFilter}|${selectedSides.join(',')}`;
+	}, [selectedStrategies, minPriceFilter, maxPriceFilter, selectedCategory, selectedWinnerFilter, selectedSides]);
+
 	const filteredAlerts = useMemo<AlertItem[]>(() => {
 		if (selectedStrategies.length === 0) return [];
+		if (alerts.length === 0) return [];
+
+		// Pre-compute filter config to avoid recreating objects
+		const filterConfig = {
+			strategies: selectedStrategies,
+			minPrice: minPriceFilter,
+			maxPrice: maxPriceFilter,
+			category: selectedCategory,
+			winnerFilter: selectedWinnerFilter,
+			sides: selectedSides,
+			onlyBetOnce: false,
+			betSizing: "target_payout" as const,
+		};
 
 		return alerts.filter((alert) => {
-			return alertMatchesFilters(
-				alert,
-				selectedStrategies,
-				minPriceFilter,
-				maxPriceFilter,
-				selectedCategory,
-				selectedWinnerFilter,
-				selectedSides,
-			);
+			const outcome = mapOutcome(alert.outcome).label;
+			if ((outcome === "YES" || outcome === "NO") && !selectedSides.includes(outcome)) {
+				return false;
+			}
+			return sharedAlertMatchesFilters(alert, filterConfig);
 		});
-	}, [
-		alerts,
-		maxPriceFilter,
-		minPriceFilter,
-		selectedCategory,
-		selectedStrategies,
-		selectedWinnerFilter,
-		selectedSides,
-	]);
+	}, [alerts, filterKey]);
+
+	// Pre-allocate formatters for better performance
+	const dateFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, {
+		month: "2-digit",
+		day: "2-digit",
+		year: "numeric",
+	}), []);
+
+	const timeFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: false,
+	}), []);
+
+	const numberFormatter = useMemo(() => new Intl.NumberFormat(undefined, {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	}), []);
 
 	const alertRows = useMemo<AlertRowView[]>(() => {
+		// Early return for empty arrays
+		if (filteredAlerts.length === 0) return [];
+
 		return filteredAlerts.map((alert) => {
 			const rowId = createRowId(alert);
 			const dt = new Date(Number(alert.alert_time) * 1000);
@@ -383,24 +416,12 @@ export function TerminalPage() {
 				user: alert.user,
 				profileAddress,
 				addrShort,
-				volumeFormatted: Number(alert.volume || 0).toLocaleString(undefined, {
-					minimumFractionDigits: 2,
-					maximumFractionDigits: 2,
-				}),
+				volumeFormatted: numberFormatter.format(Number(alert.volume || 0)),
 				outcomeClass: outcome.className,
 				outcomeLabel: outcome.label,
 				statusBadgeHtml,
-				dateText: dt.toLocaleDateString(undefined, {
-					month: "2-digit",
-					day: "2-digit",
-					year: "numeric",
-				}),
-				timeText: dt.toLocaleTimeString(undefined, {
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-					hour12: false,
-				}),
+				dateText: dateFormatter.format(dt),
+				timeText: timeFormatter.format(dt),
 				question: alert.question ?? "",
 				timestamp: Number(alert.alert_time),
 				conditionId: alert.conditionId ?? "",
@@ -409,15 +430,7 @@ export function TerminalPage() {
 				price: Number(alert.price || 0),
 			};
 		});
-	}, [filteredAlerts]);
-
-	const alertsByRowId = useMemo(() => {
-		const byId = new Map<string, AlertItem>();
-		for (const alert of filteredAlerts) {
-			byId.set(createRowId(alert), alert);
-		}
-		return byId;
-	}, [filteredAlerts]);
+	}, [filteredAlerts, dateFormatter, timeFormatter, numberFormatter]);
 
 	const currentBlockText = String(
 		insiderStats.current_block ?? syncState.block ?? "--",
@@ -812,8 +825,11 @@ export function TerminalPage() {
 			winnerFilter?: WinnerFilter;
 			showLoading?: boolean;
 			sides?: string[];
+			maxFillPages?: number;
 		},
 	) => {
+		if (alertsInFlightRef.current) return;
+		alertsInFlightRef.current = true;
 		const requestId = ++alertsRequestSeqRef.current;
 		const showLoading = options?.showLoading ?? true;
 		if (showLoading && isMountedRef.current) {
@@ -833,6 +849,7 @@ export function TerminalPage() {
 			);
 			const winnerFilter = options?.winnerFilter ?? selectedWinnerFilter;
 			const sides = options?.sides ?? selectedSides;
+			const maxFill = options?.maxFillPages ?? MAX_ALERT_FILL_PAGES;
 
 			const response = await fetchAlerts(
 				page,
@@ -873,7 +890,7 @@ export function TerminalPage() {
 					sides,
 				) < ALERTS_PAGE_SIZE &&
 				hasNext &&
-				fillCount < MAX_ALERT_FILL_PAGES
+				fillCount < maxFill
 			) {
 				if (
 					requestId !== alertsRequestSeqRef.current ||
@@ -932,10 +949,13 @@ export function TerminalPage() {
 			) {
 				setAlertsLoading(false);
 			}
+			alertsInFlightRef.current = false;
 		}
 	};
 
 	const loadMarkets = async (page = 1, options?: { showLoading?: boolean }) => {
+		if (marketsInFlightRef.current) return;
+		marketsInFlightRef.current = true;
 		const showLoading = options?.showLoading ?? true;
 		if (showLoading && isMountedRef.current) {
 			setMarketsLoading(true);
@@ -959,6 +979,7 @@ export function TerminalPage() {
 			if (showLoading && isMountedRef.current) {
 				setMarketsLoading(false);
 			}
+			marketsInFlightRef.current = false;
 		}
 	};
 
@@ -1051,34 +1072,52 @@ export function TerminalPage() {
 	};
 
 	const loadGlobalStats = async () => {
-		const nextStats = await fetchGlobalStats();
-		if (!isMountedRef.current) return;
-		setGlobalStats(nextStats);
+		if (globalStatsInFlightRef.current) return;
+		globalStatsInFlightRef.current = true;
+		try {
+			const nextStats = await fetchGlobalStats();
+			if (!isMountedRef.current) return;
+			setGlobalStats(nextStats);
+		} finally {
+			globalStatsInFlightRef.current = false;
+		}
 	};
 
 	const loadInsiderStats = async () => {
-		const nextStats = await fetchInsiderStats();
-		if (!isMountedRef.current) return;
-		setInsiderStats(nextStats);
+		if (insiderStatsInFlightRef.current) return;
+		insiderStatsInFlightRef.current = true;
+		try {
+			const nextStats = await fetchInsiderStats();
+			if (!isMountedRef.current) return;
+			setInsiderStats(nextStats);
+		} finally {
+			insiderStatsInFlightRef.current = false;
+		}
 	};
 
 	const loadSyncStatus = async () => {
-		const payload = await fetchHealth();
-		if (!isMountedRef.current) return;
-		if (
-			!payload ||
-			(Object.keys(payload).length === 0 && payload.constructor === Object)
-		) {
-			setSyncState({ label: "SYNC: ERROR", healthy: false, block: "--" });
-			return;
-		}
+		if (syncStatusInFlightRef.current) return;
+		syncStatusInFlightRef.current = true;
+		try {
+			const payload = await fetchHealth();
+			if (!isMountedRef.current) return;
+			if (
+				!payload ||
+				(Object.keys(payload).length === 0 && payload.constructor === Object)
+			) {
+				setSyncState({ label: "SYNC: ERROR", healthy: false, block: "--" });
+				return;
+			}
 
-		const block = String(payload.current_block ?? "--");
-		setSyncState({
-			label: `SYNC: ONLINE`, //SYNC: ONL
-			healthy: true,
-			block,
-		});
+			const block = String(payload.current_block ?? "--");
+			setSyncState({
+				label: `SYNC: ONLINE`, //SYNC: ONL
+				healthy: true,
+				block,
+			});
+		} finally {
+			syncStatusInFlightRef.current = false;
+		}
 	};
 
 	const refreshMarkets = async () => {
@@ -1086,10 +1125,13 @@ export function TerminalPage() {
 		if (refreshInFlightRef.current) return;
 		refreshInFlightRef.current = true;
 		try {
-			await Promise.all([
-				loadInsiderAlerts(currentPage, { showLoading: false }),
-				loadMarkets(marketsCurrentPage, { showLoading: false }),
-			]);
+			await loadInsiderAlerts(currentPage, {
+				showLoading: false,
+				maxFillPages: 3,
+			});
+			// Always 2 seconds pause in between each
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			await loadMarkets(marketsCurrentPage, { showLoading: false });
 		} finally {
 			refreshInFlightRef.current = false;
 		}
@@ -1517,19 +1559,23 @@ export function TerminalPage() {
 	}, []);
 
 	useEffect(() => {
-		void Promise.all([
-			loadSyncStatus(),
-			loadInsiderStats(),
-			loadGlobalStats(),
-			loadInsiderAlerts(1),
-			loadMarkets(1),
-		]);
+		const loadAll = async () => {
+			// Fire all independent requests in parallel
+			await Promise.all([
+				loadSyncStatus(),
+				loadInsiderStats(),
+				loadGlobalStats(),
+				loadInsiderAlerts(1),
+				loadMarkets(1)
+			]);
+		};
+		void loadAll();
 	}, []);
 
 	useEffect(() => {
 		const timer = setInterval(() => {
 			void loadSyncStatus();
-		}, 1_000);
+		}, 2_000);
 
 		return () => clearInterval(timer);
 	}, []);
@@ -1537,7 +1583,7 @@ export function TerminalPage() {
 	useEffect(() => {
 		const timer = setInterval(() => {
 			void loadInsiderStats();
-		}, 1_000);
+		}, 2_000);
 
 		return () => clearInterval(timer);
 	}, []);
@@ -1589,7 +1635,7 @@ export function TerminalPage() {
 
 	return (
 		<div className="terminal-app">
-			<div className="container mx-auto max-w-6xl px-4">
+			<main className="container mx-auto max-w-6xl px-4">
 				<TerminalHeader
 					currentBlock={currentBlockText}
 					syncLabel={syncState.label}
@@ -1674,7 +1720,7 @@ export function TerminalPage() {
 				/>
 
 				<TerminalBanner currentBlock={currentBlockText} />
-			</div>
+			</main>
 
 			<div className="floating-cash-overlay" aria-hidden="true">
 				{floatingCash.map((entry) => (

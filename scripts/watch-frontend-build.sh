@@ -37,7 +37,7 @@ while true; do
   echo "[frontend-build-watcher] Change detected. Building frontend..."
   if (
     cd "${FRONTEND_DIR}"
-    bun run build --outdir=../public
+    bun run build
   ); then
     echo "[frontend-build-watcher] Build complete."
   else

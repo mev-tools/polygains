@@ -154,14 +154,14 @@ export function TerminalHeader({
 	syncHealthy,
 }: HeaderProps) {
 	return (
-		<div className="navbar bg-base-100 border-b border-base-content/10 mb-8 p-0 min-h-0 pb-4 items-start">
+		<div className="navbar bg-base-100 border-b border-base-content/10 mb-8 p-0 min-h-0 pb-4 items-start header-logo-min-height">
 			<div className="flex-1">
 				<pre className="text-[0.5rem] leading-[0.6rem] md:text-[0.6rem] md:leading-[0.7rem] font-mono text-primary whitespace-pre overflow-x-hidden">
 					{TOP_LOGO_ASCII}
 				</pre>
 			</div>
-			<div className="flex-none flex flex-col items-end gap-1 text-xs font-mono">
-				<div className="opacity-50">BLOCK: {currentBlock}</div>
+			<div className="flex-none flex flex-col items-end gap-1 text-xs font-mono w-40">
+				<div className="text-base-content/70">BLOCK: {currentBlock}</div>
 				<div
 					className={`font-bold ${syncHealthy ? "text-accent" : "text-error"}`}
 				>
@@ -174,14 +174,14 @@ export function TerminalHeader({
 
 export function TerminalIntro({ text }: TerminalIntroProps) {
 	return (
-		<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-8 font-mono text-xs md:text-sm">
+		<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-8 font-mono text-xs md:text-sm intro-container-min-height">
 			<div className="card-body p-6">
-				<h3 className="text-primary uppercase opacity-80 text-xs mb-2">
+				<h3 className="text-primary uppercase text-xs mb-2">
 					<span className="text-primary mr-2">$</span> run explain-detection
 				</h3>
-				<div className="leading-relaxed opacity-70 min-h-[4.5em]">
+				<div className="leading-relaxed text-base-content/80">
 					{text}
-					<span className="inline-block w-1.5 h-3 bg-accent animate-pulse align-middle ml-1" />
+					<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
 				</div>
 			</div>
 		</div>
@@ -232,7 +232,7 @@ export function LiveTrackerControls({
 
 	return (
 		<div className="mb-4 mt-8">
-			<h2 className="text-xs font-bold text-base-content/50 uppercase mb-4 flex flex-wrap justify-between items-center gap-4">
+			<h2 className="text-xs font-bold text-base-content/70 uppercase mb-4 flex flex-wrap justify-between items-center gap-4 section-header-min-height">
 				<span>LIVE_TRACKER</span>
 				<div className="flex gap-2 items-center flex-wrap">
 					<input
@@ -273,7 +273,7 @@ export function LiveTrackerControls({
 								onOnlyBetOnceChange(event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">
+						<span className="label-text text-xs text-base-content/80">
 							1 BET/MKT
 						</span>
 					</label>
@@ -287,15 +287,16 @@ export function LiveTrackerControls({
 								onBetOneDollarPerTradeChange(event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">
+						<span className="label-text text-xs text-base-content/80">
 							FIXED $10
 						</span>
 					</label>
 					<button
 						type="button"
 						disabled={disabled}
-						className={`btn btn-xs ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
+						className={`btn btn-sm min-w-[44px] min-h-[44px] ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
 						onClick={() => onSoundToggle(!soundEnabled)}
+						aria-label={soundEnabled ? "Sound Enabled" : "Sound Muted"}
 						title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
 					>
 						{soundEnabled ? "🔊" : "🔇"}
@@ -311,7 +312,7 @@ export function LiveTrackerControls({
 								onStrategyChange("follow_insider", event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">
+						<span className="label-text text-xs text-base-content/80">
 							FOLLOW
 						</span>
 					</label>
@@ -325,7 +326,7 @@ export function LiveTrackerControls({
 								onStrategyChange("reverse_insider", event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">
+						<span className="label-text text-xs text-base-content/80">
 							REVERSE
 						</span>
 					</label>
@@ -340,7 +341,7 @@ export function LiveTrackerControls({
 								onSideToggle("YES", event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">YES</span>
+						<span className="label-text text-xs text-base-content/80">YES</span>
 					</label>
 					<label className="cursor-pointer label p-0 gap-2">
 						<input
@@ -352,7 +353,7 @@ export function LiveTrackerControls({
 								onSideToggle("NO", event.currentTarget.checked)
 							}
 						/>
-						<span className="label-text text-xs text-base-content/70">NO</span>
+						<span className="label-text text-xs text-base-content/80">NO</span>
 					</label>
 				</div>
 			</h2>
@@ -374,19 +375,19 @@ export function LiveTrackerCards({
 	return (
 		<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10 mb-8">
 			<div className="stat">
-				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+				<div className="stat-title text-base-content/70 uppercase text-xs tracking-wider font-bold">
 					Money Bet
 				</div>
 				<div className="stat-value text-base-content text-xl font-mono">
 					${formatLargeNumber(totalBet)}
 				</div>
-				<div className="stat-desc text-base-content/50 text-xs mt-1">
+				<div className="stat-desc text-base-content/70 text-xs mt-1">
 					Open: <span className="text-base-content">${formatLargeNumber(openInterest)}</span>
 				</div>
 			</div>
 
 			<div className="stat relative">
-				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+				<div className="stat-title text-base-content/70 uppercase text-xs tracking-wider font-bold">
 					PnL
 				</div>
 				<div
@@ -397,9 +398,10 @@ export function LiveTrackerCards({
 				<div className="stat-actions absolute top-0 right-0 bottom-0 flex items-center pr-4">
 					<button
 						type="button"
-						className={`btn btn-xs ${backtestRunning ? "btn-disabled" : "btn-outline btn-accent"} h-full rounded-none border-t-0 border-b-0 border-r-0 border-l px-4`}
+						className={`btn btn-sm ${backtestRunning ? "btn-disabled" : "btn-outline btn-accent"} h-full rounded-none border-t-0 border-b-0 border-r-0 border-l px-4`}
 						disabled={backtestRunning}
 						onClick={onRunBacktest}
+						aria-label={backtestRunning ? "Processing backtest" : backtestCanContinue ? "Continue backtest" : "Run backtest"}
 					>
 						{backtestRunning
 							? "Processing..."
@@ -411,12 +413,12 @@ export function LiveTrackerCards({
 			</div>
 
 			<div className="stat">
-				<div className="stat-title text-base-content/50 uppercase text-xs tracking-wider font-bold">
+				<div className="stat-title text-base-content/70 uppercase text-xs tracking-wider font-bold">
 					Trades
 				</div>
 				<div className="stat-value text-base-content text-xl font-mono">
 					{liveTrades}
-					<span className="text-xs text-base-content/50 ml-2 font-normal">
+					<span className="text-xs text-base-content/70 ml-2 font-normal">
 						(W:{liveWins} L:{liveLosses})
 					</span>
 				</div>
@@ -448,11 +450,11 @@ function NoAlertsAscii() {
 	const text = frame % 4 === 0 ? "NO SIGNALS DETECTED" : "SEARCHING...";
 
 	return (
-		<div className="flex flex-col items-center justify-center py-12 gap-4 opacity-40 font-mono text-xs text-primary">
+		<div className="flex flex-col items-center justify-center py-12 gap-4 font-mono text-xs text-primary/70">
 			<pre className={`leading-[0.6rem] whitespace-pre ${glitch}`}>
 				{NO_ALERTS_ASCII}
 			</pre>
-			<div className="tracking-[0.2em] animate-pulse">{text}</div>
+			<div className="tracking-[0.2em] animate-pulse-gpu">{text}</div>
 		</div>
 	);
 }
@@ -471,8 +473,8 @@ const AlertsSectionComponent = ({
 }: AlertsSectionProps) => {
 	return (
 		<>
-			<div className="flex flex-wrap justify-between items-center mb-4 mt-8 gap-4">
-				<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider">
+			<div className="flex flex-wrap justify-between items-center mb-4 mt-8 gap-4 filter-bar-min-height">
+				<h2 className="text-xs font-bold text-base-content/70 uppercase tracking-wider section-header-min-height flex items-center">
 					RECENT_POLYGAINS_ALERTS
 				</h2>
 				<div className="flex flex-wrap gap-4 items-center">
@@ -481,8 +483,10 @@ const AlertsSectionComponent = ({
 							<button
 								key={category}
 								type="button"
-								className={`join-item btn btn-xs ${category === selectedCategory ? "btn-primary" : "btn-ghost"}`}
+								className={`join-item btn btn-sm min-w-[48px] min-h-[48px] ${category === selectedCategory ? "btn-primary" : "btn-ghost"}`}
 								onClick={() => onCategoryChange(category)}
+								aria-label={`Filter alerts by ${category}`}
+								aria-pressed={category === selectedCategory}
 								title={`Filter alerts by ${category}`}
 							>
 								{category}
@@ -494,8 +498,10 @@ const AlertsSectionComponent = ({
 							<button
 								key={filter}
 								type="button"
-								className={`join-item btn btn-xs ${filter === selectedWinnerFilter ? "btn-secondary" : "btn-ghost"}`}
+								className={`join-item btn btn-sm min-w-[48px] min-h-[48px] ${filter === selectedWinnerFilter ? "btn-secondary" : "btn-ghost"}`}
 								onClick={() => onWinnerFilterChange(filter)}
+								aria-label={`Show ${filter.toLowerCase()}`}
+								aria-pressed={filter === selectedWinnerFilter}
 								title={`Show ${filter.toLowerCase()}`}
 							>
 								{filter}
@@ -505,32 +511,43 @@ const AlertsSectionComponent = ({
 				</div>
 			</div>
 
-			<div className="overflow-x-auto bg-base-200 rounded-box border border-base-content/10 mb-8">
-				<table className="table table-xs w-full">
+			<div className="overflow-x-auto bg-base-200 rounded-box border border-base-content/10 mb-8 alerts-table-container">
+				<table className="table table-xs w-full table-fixed">
 					<thead>
-						<tr className="bg-base-300 text-base-content/50 uppercase tracking-wider">
-							<th>Market</th>
-							<th>Side</th>
-							<th className="text-right">Price</th>
-							<th className="text-right">Volume</th>
-							<th className="text-right">Time</th>
-							<th className="text-center">Lookup</th>
+						<tr className="bg-base-300 text-base-content/70 uppercase tracking-wider">
+							<th className="w-[35%]">Market</th>
+							<th className="w-[15%]">Side</th>
+							<th className="w-[12%] text-right">Price</th>
+							<th className="w-[15%] text-right">Volume</th>
+							<th className="w-[13%] text-right">Time</th>
+							<th className="w-[10%] text-center">Lookup</th>
 						</tr>
 					</thead>
-					<tbody>
-						{rows.length === 0 ? (
-							<tr>
-								<td colSpan={6} className="text-center p-0">
-									<NoAlertsAscii />
-								</td>
-							</tr>
-						) : (
+					<tbody className="alerts-tbody-min-height">
+						{isLoading ? (
+							[...Array(10)].map((_, i) => (
+								<tr key={`skeleton-${i}`} className="border-b border-base-content/5">
+									<td><div className="skeleton h-4 w-full max-w-[250px]" /></td>
+									<td><div className="skeleton h-4 w-12" /></td>
+									<td className="text-right"><div className="skeleton h-4 w-16 ml-auto" /></td>
+									<td className="text-right"><div className="skeleton h-4 w-20 ml-auto" /></td>
+									<td className="text-right"><div className="skeleton h-4 w-14 ml-auto" /></td>
+									<td className="text-center"><div className="skeleton h-8 w-8 mx-auto" /></td>
+								</tr>
+							))
+							) : rows.length === 0 ? (
+								<tr>
+									<td colSpan={6} className="text-center p-0">
+										<NoAlertsAscii />
+									</td>
+								</tr>
+							) : (
 							rows.map((row, index) => {
 								const isYes = row.outcomeLabel === "YES";
 								return (
 									<Fragment key={row.rowId}>
 										<tr
-											className={`transition-colors border-b border-base-content/5 ${
+											className={`table-row-optimized border-b border-base-content/5 ${
 												index % 2 === 1 ? "bg-white/5" : "bg-transparent"
 											}`}
 										>
@@ -541,7 +558,7 @@ const AlertsSectionComponent = ({
 												>
 													{row.question || `Condition: ${row.conditionId}`}
 												</div>
-												<div className="text-[10px] font-mono text-base-content/30 truncate">
+												<div className="text-[10px] font-mono text-base-content/60 truncate">
 													{row.conditionId}
 												</div>
 											</td>
@@ -573,7 +590,7 @@ const AlertsSectionComponent = ({
 											<td className="text-right font-mono font-bold text-base-content">
 												{formatMoney(row.volume)}
 											</td>
-											<td className="text-right text-xs tabular-nums text-base-content/50">
+											<td className="text-right text-xs tabular-nums text-base-content/70">
 												{timeAgo(row.timestamp)}
 											</td>
 											<td className="text-center">
@@ -581,7 +598,8 @@ const AlertsSectionComponent = ({
 													href={`https://polymarket.com/profile/${row.profileAddress}`}
 													target="_blank"
 													rel="noreferrer"
-													className="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content"
+													className="btn btn-ghost btn-sm text-base-content/80 hover:text-base-content min-w-[44px] min-h-[44px]"
+												aria-label={`Lookup trader ${row.user}`}
 													title={`Lookup trader ${row.user}`}
 												>
 													<svg
@@ -609,28 +627,30 @@ const AlertsSectionComponent = ({
 				<div className="flex justify-between items-center p-4 border-t border-base-content/10 bg-base-200">
 					<button
 						type="button"
-						className="btn btn-xs btn-ghost"
+						className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
 						onClick={onPrev}
 						disabled={isLoading || !pagination.hasPrev}
+						aria-label="Previous page"
 					>
 						{isLoading ? (
-							<span className="loading loading-spinner loading-xs" />
+							<span className="loading loading-spinner loading-xs loading-optimized" aria-hidden="true" />
 						) : (
 							"← PREV"
 						)}
 					</button>
-					<span className="text-xs font-mono text-base-content/50 flex items-center gap-2">
+					<span className="text-xs font-mono text-base-content/70 flex items-center gap-2">
 						{isLoading && <span className="loading loading-dots loading-xs" />}
 						Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
 					</span>
 					<button
 						type="button"
-						className="btn btn-xs btn-ghost"
+						className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
 						onClick={onNext}
 						disabled={isLoading || !pagination.hasNext}
+						aria-label="Next page"
 					>
 						{isLoading ? (
-							<span className="loading loading-spinner loading-xs" />
+							<span className="loading loading-spinner loading-xs loading-optimized" aria-hidden="true" />
 						) : (
 							"NEXT →"
 						)}
@@ -660,24 +680,24 @@ export function DetectionSection({
 }: DetectionSectionProps) {
 	return (
 		<>
-			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2 mt-4">
+			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-2 mt-4 section-header-min-height flex items-center">
 				POLYGAINS_DETECTION
 			</h2>
 			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Total</div>
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">Total</div>
 					<div className="stat-value text-accent text-xl">{totalInsiders}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">YES</div>
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">YES</div>
 					<div className="stat-value text-accent text-xl">{yesInsiders}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">NO</div>
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">NO</div>
 					<div className="stat-value text-error text-xl">{noInsiders}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Volume</div>
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">Volume</div>
 					<div className="stat-value text-base-content text-xl">{insiderVolume}</div>
 				</div>
 			</div>
@@ -737,18 +757,30 @@ export function MarketsSection({
 }: MarketsSectionProps) {
 	return (
 		<>
-			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-4 mt-8">
+			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-4 mt-8 section-header-min-height flex items-center">
 				TOP_LIQUIDITY_MARKETS
 			</h2>
-			<div className="rounded-box border border-base-content/10 mb-8 p-2">
-				{markets.length === 0 ? (
-					<div className="p-8 text-center text-base-content/50">No markets found</div>
+			<div className="rounded-box border border-base-content/10 mb-8 p-2 markets-table-container contain-paint">
+				{isLoading ? (
+					<div className="flex flex-col gap-4">
+						{[...Array(5)].map((_, i) => (
+							<div key={`market-skel-${i}`} className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box">
+								<div className="skeleton h-5 w-full max-w-[600px] mb-3" />
+								<div className="w-full rounded-lg border border-base-content/5 bg-base-100/50 p-2">
+									<div className="skeleton h-4 w-full mb-2" />
+									<div className="skeleton h-4 w-full" />
+								</div>
+							</div>
+						))}
+					</div>
+				) : markets.length === 0 ? (
+					<div className="p-8 text-center text-base-content/70 min-h-[200px] flex items-center justify-center">No markets found</div>
 				) : (
 					<div className="flex flex-col gap-4">
 						{markets.map((market) => (
 							<section
 								key={market.conditionId}
-								className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box"
+								className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box card-optimized"
 							>
 								<h3
 									className="text-sm font-bold text-base-content mb-3 line-clamp-2"
@@ -757,9 +789,9 @@ export function MarketsSection({
 									{market.question}
 								</h3>
 								<div className="w-full rounded-lg border border-base-content/5 bg-base-100/50">
-									<table className="table table-xs w-full">
+									<table className="table table-xs w-full table-fixed">
 										<thead>
-											<tr className="bg-base-200 text-base-content/50 uppercase">
+											<tr className="bg-base-200 text-base-content/70 uppercase">
 												<th>Outcome</th>
 												<th>Trades</th>
 												<th>Insider Trades</th>
@@ -804,13 +836,13 @@ export function MarketsSection({
 																{outcomeMeta.label}
 															</span>
 														</td>
-														<td className="font-mono tabular-nums text-base-content/80">
+														<td className="font-mono tabular-nums text-base-content/90">
 															{totalTrades.toLocaleString()}
 														</td>
-														<td className="font-mono tabular-nums text-base-content/80">
+														<td className="font-mono tabular-nums text-base-content/90">
 															{insiderTradeCount.toLocaleString()}
 														</td>
-														<td className="font-mono tabular-nums text-base-content/80">
+														<td className="font-mono tabular-nums text-base-content/90">
 															$
 															{Number(outcome.volume || 0).toLocaleString(
 																undefined,
@@ -826,12 +858,12 @@ export function MarketsSection({
 																Boolean(market.closed || outcome.closed),
 															)}
 														</td>
-														<td className="font-mono text-base-content/60 text-[10px]">
+														<td className="font-mono text-base-content/80 text-[10px]">
 															{noTradeData ? (
-																<span className="opacity-50">no trade data</span>
+																<span className="text-base-content/60">no trade data</span>
 															) : missingStats && statsLoading ? (
 																<span className="flex items-center gap-1 opacity-70">
-																	<span className="loading loading-spinner loading-xs" />
+																	<span className="loading loading-spinner loading-xs loading-optimized" aria-hidden="true" />
 																	loading...
 																</span>
 															) : (
@@ -851,28 +883,30 @@ export function MarketsSection({
 				<div className="flex justify-between items-center p-2 mt-2 border-t border-base-content/10">
 					<button
 						type="button"
-						className="btn btn-xs btn-ghost"
+						className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
 						onClick={onPrev}
 						disabled={isLoading || !pagination.hasPrev}
+						aria-label="Previous page"
 					>
 						{isLoading ? (
-							<span className="loading loading-spinner loading-xs" />
+							<span className="loading loading-spinner loading-xs loading-optimized" aria-hidden="true" />
 						) : (
 							"← PREV"
 						)}
 					</button>
-					<span className="text-xs font-mono text-base-content/50 flex items-center gap-2">
+					<span className="text-xs font-mono text-base-content/70 flex items-center gap-2">
 						{isLoading && <span className="loading loading-dots loading-xs" />}
 						Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
 					</span>
 					<button
 						type="button"
-						className="btn btn-xs btn-ghost"
+						className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
 						onClick={onNext}
 						disabled={isLoading || !pagination.hasNext}
+						aria-label="Next page"
 					>
 						{isLoading ? (
-							<span className="loading loading-spinner loading-xs" />
+							<span className="loading loading-spinner loading-xs loading-optimized" aria-hidden="true" />
 						) : (
 							"NEXT →"
 						)}
@@ -891,24 +925,24 @@ export function GlobalStatsSection({
 }: GlobalStatsSectionProps) {
 	return (
 		<>
-			<h2 className="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2 mt-4">
+			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-2 mt-4 section-header-min-height flex items-center">
 				GLOBAL_STATS
 			</h2>
 			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Accounts</div>
+					<div className="stat-title text-base-content/80 uppercase text-xs font-bold">Accounts</div>
 					<div className="stat-value text-base-content text-xl">{accounts}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Markets</div>
+					<div className="stat-title text-base-content/80 uppercase text-xs font-bold">Markets</div>
 					<div className="stat-value text-base-content text-xl">{markets}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Total Fills</div>
+					<div className="stat-title text-base-content/80 uppercase text-xs font-bold">Total Fills</div>
 					<div className="stat-value text-base-content text-xl">{trades}</div>
 				</div>
 				<div className="stat">
-					<div className="stat-title text-base-content/50 uppercase text-xs font-bold">Active Pos</div>
+					<div className="stat-title text-base-content/80 uppercase text-xs font-bold">Active Pos</div>
 					<div className="stat-value text-accent text-xl">{activePositions}</div>
 				</div>
 			</div>
@@ -950,7 +984,7 @@ export function TerminalBanner({ currentBlock }: BannerProps) {
 					<div className="opacity-0 animate-[typeIn_0.3s_forwards_3.0s]">
 						<span className="font-bold">[OK]</span> polygains detection system{" "}
 						<span className="text-base-100 bg-accent px-1 font-bold">ONLINE</span>
-						<span className="inline-block w-1.5 h-3 bg-accent animate-pulse align-middle ml-1" />
+						<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
 					</div>
 				</div>
 			</div>

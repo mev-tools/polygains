@@ -130,7 +130,7 @@ const formatFileSize = (bytes: number): string => {
 console.log("\n🚀 Starting build process...\n");
 
 const cliConfig = parseArgs();
-const outdir = cliConfig.outdir || path.join(process.cwd(), "dist");
+const outdir = cliConfig.outdir || path.join(process.cwd(), "..", "public", "dist");
 
 if (existsSync(outdir)) {
 	console.log(`🗑️ Cleaning previous build at ${outdir}`);

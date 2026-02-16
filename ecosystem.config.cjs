@@ -40,6 +40,11 @@ module.exports = {
 			script: "bun",
 			args: "run dev",
 			cwd: path.join(__dirname, "frontend"),
+			env: {
+				FRONTEND_HOST: "127.0.0.1",
+				FRONTEND_PORT: "3001",
+				API_UPSTREAM_BASE_URL: "http://127.0.0.1:4069",
+			},
 		},
 		{
 			...commonApp,

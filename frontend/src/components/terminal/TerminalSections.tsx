@@ -688,10 +688,10 @@ const AlertsSectionComponent = ({
 				<table className="table table-xs w-full table-fixed min-w-[600px] md:min-w-full">
 					<thead>
 						<tr className="bg-base-300 text-base-content/70 uppercase tracking-wider">
-							<th className="w-[30%] md:w-[35%]">Market</th>
-							<th className="w-[12%] md:w-[15%]">Side</th>
-							<th className="w-[12%] md:w-[12%] text-right">Price</th>
-							<th className="w-[15%] md:w-[15%] text-right">Volume</th>
+							<th className="w-[30%] md:w-[35%]">Recent unuasal activity</th>
+							<th className="w-[12%] md:w-[15%]">Place bet on</th>
+							<th className="w-[12%] md:w-[12%] text-right">Entry Price</th>
+							<th className="w-[15%] md:w-[15%] text-right">$ Total</th>
 							<th className="w-[18%] md:w-[13%] text-right">Time</th>
 							<th className="w-[13%] md:w-[10%] text-center">Lookup</th>
 						</tr>

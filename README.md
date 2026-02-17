@@ -199,36 +199,6 @@ Key tables:
 - `checkpoint` - Stream processing cursor
 - `detector_snapshots` - Insider detector state
 
-## Environment Variables
-
-Copy `.env.local.example` to `.env` and configure:
-
-```bash
-# PostgreSQL
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=postgres
-POSTGRES_PORT=5469
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5469/postgres
-
-# API Server
-API_HOST=127.0.0.1
-API_PORT=4069
-
-# Frontend
-FRONTEND_HOST=127.0.0.1
-FRONTEND_PORT=4033
-API_UPSTREAM_BASE_URL=http://127.0.0.1:4069
-BUN_PUBLIC_API_BASE_URL=http://127.0.0.1:4069
-
-# Services
-FETCH_INTERVAL_MS=3600000  # 1 hour
-NODE_ENV=development
-
-# CORS (comma-separated origins)
-CORS_ORIGINS=http://localhost:4033,http://127.0.0.1:4033
-```
-
 ## Process Management
 
 All services run under PM2 (defined in `ecosystem.config.cjs`):
@@ -250,72 +220,6 @@ bunx pm2 logs api-server --lines 100
 bunx pm2 stop api-server
 ```
 
-## Testing
-
-### Unit Tests
-```bash
-# Run all unit tests
-make test
-
-# Run specific test file
-bun test tests/parser.test.ts
-```
-
-### E2E Integration Tests
-```bash
-# Make sure services are running first
-make start
-
-# Run E2E tests
-make test-e2e
-
-# Or directly
-bunx playwright test
-```
-
-### Manual API Testing
-```bash
-# Health check
-curl http://localhost:4069/health
-
-# Global stats
-curl http://localhost:4069/global-stats
-
-# Markets (paginated)
-curl "http://localhost:4069/markets?page=1&limit=10"
-```
-
-## Static Assets
-
-All files in `public/` are served at root path:
-
-- `/favicon.ico` - Multi-resolution ICO favicon
-- `/favicon-*.png` - PNG favicons (16/32/48px)
-- `/favicon-*.webp` - WebP favicons (compressed)
-- `/apple-touch-icon.png` - iOS home screen icon
-- `/android-chrome-*.png` - Android icons (192/512px)
-- `/og-image.png` - Open Graph social preview (1200×630)
-- `/twitter-card.png` - Twitter card image (1200×600)
-
-Built frontend assets are served from `public/dist/`.
-
-## Code Style
-
-Linting is handled by Biome:
-
-```bash
-# Check linting
-bun run lint
-
-# Fix linting issues
-bun run lint:fix
-```
-
-Key conventions:
-- Use double quotes for strings
-- Path alias `@/*` maps to `src/*`
-- Prefer Bun APIs over Node.js equivalents
-- Bun automatically loads `.env` files (no `dotenv` needed)
 
 ## Troubleshooting
 
@@ -344,34 +248,8 @@ make stop
 make start
 ```
 
-### Port already in use
-```bash
-# Find process using ports
-lsof -i :4069  # API port
-lsof -i :4033  # Frontend port
-lsof -i :5469  # Postgres port
-
-# Kill the process if needed
-kill -9 <PID>
-```
-
-### Module resolution errors
-```bash
-# Reinstall dependencies
-bun install
-
-# Clear bun cache
-rm -rf node_modules
-bun install
-```
 
 ## References
 
 - `CLAUDE.md` - Bun-specific coding guidelines
 - `AGENTS.md` - AI agent guide for the codebase
-- `docs/DESIGN.md` - Frontend architecture design
-- `BACKTEST.md` - Backtest implementation notes
-
-## License
-
-MIT

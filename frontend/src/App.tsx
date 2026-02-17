@@ -1,3 +1,4 @@
+"use client";
 import { useEffect, useState } from "react";
 import { AppProviders } from "./app/providers/AppProviders";
 import { MainV2Page } from "./pages/PlaygroundLegacy";

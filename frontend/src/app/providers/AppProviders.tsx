@@ -1,3 +1,4 @@
+"use client";
 import type React from "react";
 import { SWRConfig } from "swr";
 import { TerminalDataProvider } from "@/context/TerminalDataContext";

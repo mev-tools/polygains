@@ -1,4 +1,4 @@
-.PHONY: help start stop status logs up down restart ps db-shell db-logs install build-frontend db-generate db-migrate db-prepare
+.PHONY: help start start-parallel start-sequential stop status logs up down restart ps db-shell db-logs install build-frontend db-generate db-migrate db-prepare
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -33,14 +33,61 @@ start: ## Start all services (postgres + api + markets + pipeline + frontend)
 	@echo "✨ All services started!"
 	@echo ""
 	@echo "📊 Service URLs:"
-	@echo "   API Server:  https://api.polygains.com"
-	@echo "   Frontend:    https://polygains.com (served via R2)"
+	@echo "   API Server:  http://127.0.0.1:4069"
+	@echo "   Frontend:    http://127.0.0.1:4033"
 	@echo ""
 	@echo "📝 Useful commands:"
 	@echo "   make status  - View service status"
 	@echo "   make logs    - View all logs"
 	@echo "   make stop    - Stop all services"
-	@echo "   make deploy-frontend - Build and deploy frontend to R2"
+
+start-parallel: ## Start all services in parallel using bun run --parallel
+	@echo "🚀 Starting all services in parallel..."
+	@echo "📊 Starting postgres..."
+	@mkdir -p .pgsocket && chmod 777 .pgsocket || true
+	@docker compose up -d postgres
+	@echo "⏳ Waiting for postgres to be healthy..."
+	@for i in $$(seq 1 60); do \
+		if docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "❌ Postgres failed to start" && exit 1
+	@echo "✅ Postgres ready!"
+	@echo "🗄️  Preparing database schema..."
+	@$(MAKE) db-prepare
+	@echo ""
+	@echo "🔧 Starting all services in parallel..."
+	@bun run --parallel start:api start:markets start:pipeline start:frontend
+
+start-sequential: ## Start all services sequentially using bun run --sequential
+	@echo "🚀 Starting all services sequentially..."
+	@echo "📊 Starting postgres..."
+	@mkdir -p .pgsocket && chmod 777 .pgsocket || true
+	@docker compose up -d postgres
+	@echo "⏳ Waiting for postgres to be healthy..."
+	@for i in $$(seq 1 60); do \
+		if docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "❌ Postgres failed to start" && exit 1
+	@echo "✅ Postgres ready!"
+	@echo "🗄️  Preparing database schema..."
+	@$(MAKE) db-prepare
+	@echo ""
+	@echo "🔧 Starting all services sequentially..."
+	@bun run --sequential start:api start:markets start:pipeline start:frontend
+
+dev-parallel: ## Run dev servers in parallel (api, markets, pipeline, frontend)
+	@echo "🚀 Starting dev servers in parallel..."
+	@bun run --parallel dev:api dev:markets dev:pipeline dev:frontend
+
+dev-sequential: ## Run dev servers sequentially
+	@echo "🚀 Starting dev servers sequentially..."
+	@bun run --sequential dev:api dev:markets dev:pipeline dev:frontend
 
 deploy-frontend: ## Build and deploy frontend to Cloudflare Pages
 	@echo "🏗️  Building frontend..."
@@ -150,8 +197,11 @@ clear: ## Clear database and migration files to start from scratch (WARNING: del
 install: ## Install dependencies
 	bun install
 
-test: ## Run unit tests
-	bun test
+test: ## Run unit tests (excluding integration tests)
+	@echo "Running unit tests..."
+	@ls tests/*.test.ts | grep -v '\.integration\.' | xargs bun test
+	@echo "Running frontend tests..."
+	@bun test frontend/src/lib/backtest.test.ts
 
 test-e2e: ## Run e2e integration tests
 	@echo "🧪 Running e2e tests..."
@@ -160,7 +210,10 @@ test-e2e: ## Run e2e integration tests
 
 test-all: ## Run all tests (unit + e2e)
 	@echo "Running unit tests..."
-	bun test tests/*.test.ts
+	@ls tests/*.test.ts | grep -v '\.integration\.' | xargs bun test
+	@echo ""
+	@echo "Running frontend tests..."
+	@bun test frontend/src/lib/backtest.test.ts
 	@echo ""
 	@echo "Running e2e tests..."
 	bunx playwright test
@@ -187,8 +240,10 @@ dev-local: ## Run all services locally (postgres in docker, rest with bun)
 	@echo "   Terminal 1: make run-server    (API server on port 4069)"
 	@echo "   Terminal 2: make run-markets   (Markets fetcher)"
 	@echo "   Terminal 3: make run-pipeline  (Blockchain pipeline)"
-	@echo "   Terminal 4: make run-frontend  (Frontend on port 3000)"
+	@echo "   Terminal 4: make run-frontend  (Frontend on port 4033)"
 	@echo ""
+	@echo "🔧 Or run all in parallel with:"
+	@echo "   make dev-parallel"
 
 run-server: ## Run API server locally
 	@echo "🚀 Starting API server on port 4069..."
@@ -203,8 +258,8 @@ run-pipeline: ## Run blockchain pipeline locally
 	bun --watch src/main.ts
 
 run-frontend: ## Run frontend dev server locally
-	@echo "🎨 Starting frontend dev server..."
-	cd frontend && bun run dev
+	@echo "🎨 Starting frontend dev server on port 4033..."
+	cd frontend && FRONTEND_PORT=4033 bun run dev
 
 stop-local: ## Stop local postgres
 	@echo "🛑 Stopping postgres..."

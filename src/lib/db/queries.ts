@@ -617,10 +617,189 @@ export async function getCategories() {
 	});
 }
 
-// --- OPTIMIZED QUERIES ---
+// Category to priority group mapping
+const CATEGORY_GROUPS: Record<string, string> = {
+	// Politics group
+	POLITICS: "Politics",
+	POLITICAL: "Politics",
+	ELECTION: "Politics",
+	ELECTIONS: "Politics",
+	GOVERNMENT: "Politics",
+	TRUMP: "Politics",
+	BIDEN: "Politics",
+	CONGRESS: "Politics",
+	SENATE: "Politics",
+	HOUSE: "Politics",
+	VOTE: "Politics",
+	VOTING: "Politics",
+	CAMPAIGN: "Politics",
+	// Sports group
+	SPORTS: "Sports",
+	SPORT: "Sports",
+	NFL: "Sports",
+	NBA: "Sports",
+	MLB: "Sports",
+	NHL: "Sports",
+	SOCCER: "Sports",
+	FOOTBALL: "Sports",
+	BASEBALL: "Sports",
+	BASKETBALL: "Sports",
+	TENNIS: "Sports",
+	GOLF: "Sports",
+	UFC: "Sports",
+	MMA: "Sports",
+	BOXING: "Sports",
+	OLYMPICS: "Sports",
+	// Crypto group
+	CRYPTO: "Crypto",
+	CRYPTOCURRENCY: "Crypto",
+	BITCOIN: "Crypto",
+	ETHEREUM: "Crypto",
+	ETH: "Crypto",
+	BTC: "Crypto",
+	BLOCKCHAIN: "Crypto",
+	DEFI: "Crypto",
+	NFT: "Crypto",
+	NFTS: "Crypto",
+	WEB3: "Crypto",
+	// Finance group
+	FINANCE: "Finance",
+	FINANCIAL: "Finance",
+	STOCKS: "Finance",
+	STOCK: "Finance",
+	EQUITY: "Finance",
+	EQUITIES: "Finance",
+	TRADING: "Finance",
+	INVESTMENT: "Finance",
+	INVESTING: "Finance",
+	BANKING: "Finance",
+	BANK: "Finance",
+	// Geopolitics group
+	GEOPOLITICS: "Geopolitics",
+	GEOPOLITICAL: "Geopolitics",
+	INTERNATIONAL: "Geopolitics",
+	FOREIGN: "Geopolitics",
+	DIPLOMACY: "Geopolitics",
+	WAR: "Geopolitics",
+	CONFLICT: "Geopolitics",
+	MILITARY: "Geopolitics",
+	// Earnings group
+	EARNINGS: "Earnings",
+	EARNINGS_REPORT: "Earnings",
+	PROFIT: "Earnings",
+	REVENUE: "Earnings",
+	QUARTERLY: "Earnings",
+	QUARTER: "Earnings",
+	Q1: "Earnings",
+	Q2: "Earnings",
+	Q3: "Earnings",
+	Q4: "Earnings",
+	// Tech group
+	TECH: "Tech",
+	TECHNOLOGY: "Tech",
+	AI: "Tech",
+	ARTIFICIAL_INTELLIGENCE: "Tech",
+	MACHINE_LEARNING: "Tech",
+	SOFTWARE: "Tech",
+	HARDWARE: "Tech",
+	SEMICONDUCTOR: "Tech",
+	CHIP: "Tech",
+	CHIPS: "Tech",
+	TESLA: "Tech",
+	APPLE: "Tech",
+	GOOGLE: "Tech",
+	AMAZON: "Tech",
+	MICROSOFT: "Tech",
+	// Culture group
+	CULTURE: "Culture",
+	ENTERTAINMENT: "Culture",
+	MUSIC: "Culture",
+	MOVIE: "Culture",
+	MOVIES: "Culture",
+	TV: "Culture",
+	CELEBRITY: "Culture",
+	CELEBRITIES: "Culture",
+	AWARDS: "Culture",
+	OSCAR: "Culture",
+	OSCARS: "Culture",
+	GRAMMY: "Culture",
+	GRAMMYS: "Culture",
+	// World group
+	WORLD: "World",
+	GLOBAL: "World",
+	INTERNATIONAL_NEWS: "World",
+	FOREIGN_AFFAIRS: "World",
+	// Economy group
+	ECONOMY: "Economy",
+	ECONOMIC: "Economy",
+	GDP: "Economy",
+	INFLATION: "Economy",
+	RECESSION: "Economy",
+	FED: "Economy",
+	FEDERAL_RESERVE: "Economy",
+	INTEREST_RATES: "Economy",
+	UNEMPLOYMENT: "Economy",
+	JOBS: "Economy",
+	LABOR: "Economy",
+};
 
-const ALERTS_CACHE_LIMIT = 6;
-const MARKETS_CACHE_LIMIT = 4;
+export interface CategoryCount {
+	name: string;
+	count: number;
+	enabled: boolean;
+	group?: string;
+}
+
+export async function getCategoriesWithCounts(): Promise<CategoryCount[]> {
+	// Get all distinct tags with their counts from markets
+	const result = await db
+		.select({ tags: marketsTable.outcomeTags })
+		.from(marketsTable)
+		.where(isNotNull(marketsTable.outcomeTags));
+
+	const categoryCounts = new Map<string, number>();
+	const categoryGroups = new Map<string, string>();
+
+	for (const row of result) {
+		if (!row.tags) continue;
+		const tags = row.tags.split(",");
+		for (const tag of tags) {
+			const cleanTag = tag.trim().toUpperCase();
+			if (cleanTag && cleanTag !== "ALL") {
+				categoryCounts.set(cleanTag, (categoryCounts.get(cleanTag) || 0) + 1);
+				// Map to group if exists
+				const group = CATEGORY_GROUPS[cleanTag];
+				if (group) {
+					categoryGroups.set(cleanTag, group);
+				}
+			}
+		}
+	}
+
+	// Build result with counts and enabled status
+	const categories: CategoryCount[] = [];
+	
+	// Add ALL first
+	categories.push({ name: "ALL", count: 0, enabled: true });
+
+	// Add categories with counts
+	for (const [name, count] of categoryCounts) {
+		categories.push({
+			name,
+			count,
+			enabled: count > 0,
+			group: categoryGroups.get(name),
+		});
+	}
+
+	return categories.sort((a, b) => {
+		if (a.name === "ALL") return -1;
+		if (b.name === "ALL") return 1;
+		return a.name.localeCompare(b.name);
+	});
+}
+
+// --- OPTIMIZED QUERIES ---
 
 export interface AlertItem {
 	price: number;
@@ -640,11 +819,18 @@ export interface AlertItem {
 }
 
 /**
- * Optimized alerts query - fetches only 6 most recent alerts
+ * Optimized alerts query with pagination.
  */
 export async function getInsiderAlertsOptimized(
+	page = 1,
+	limit = 10,
 	category?: string,
 ): Promise<{ total: number; alerts: AlertItem[] }> {
+	const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+	const safeLimit = Number.isFinite(limit)
+		? Math.max(1, Math.floor(limit))
+		: 10;
+	const offset = (safePage - 1) * safeLimit;
 	const normalizedCategory = category?.trim();
 	const triggerPriceFilter = sql`coalesce(${vInsidersEnriched.alertPrice}, ${vInsidersEnriched.lastPrice}, 0) <= ${ALERT_MAX_TRIGGER_PRICE + ALERT_PRICE_EPSILON}`;
 	const categoryFilter = normalizedCategory
@@ -684,8 +870,13 @@ export async function getInsiderAlertsOptimized(
 			eq(vInsidersEnriched.account, accountWalletMap.accountHash),
 		)
 		.where(combinedFilter)
-		.orderBy(desc(vInsidersEnriched.detectedAt))
-		.limit(ALERTS_CACHE_LIMIT);
+		.orderBy(
+			desc(vInsidersEnriched.detectedAt),
+			desc(vInsidersEnriched.volume),
+			desc(vInsidersEnriched.account),
+		)
+		.offset(offset)
+		.limit(safeLimit);
 
 	const [countResult, insiders] = await Promise.all([
 		countPromise,
@@ -783,11 +974,18 @@ export interface OptimizedMarketOutcome {
 }
 
 /**
- * Optimized markets query - fetches only 4 top markets with volume pre-filter
+ * Optimized markets query with pagination and volume pre-filter.
  */
 export async function getMarketsOptimized(
+	page = 1,
+	limit = 10,
 	closed?: boolean,
 ): Promise<{ total: number; markets: OptimizedMarketOutcome[] }> {
+	const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+	const safeLimit = Number.isFinite(limit)
+		? Math.max(1, Math.floor(limit))
+		: 10;
+	const offset = (safePage - 1) * safeLimit;
 	const now = Date.now();
 	const closedFilter =
 		closed === undefined ? undefined : eq(vMarketSummary.closed, closed);
@@ -837,7 +1035,8 @@ export async function getMarketsOptimized(
 		})
 		.from(topMarketsSubquery)
 		.orderBy(desc(hnScoreSql))
-		.limit(MARKETS_CACHE_LIMIT);
+		.offset(offset)
+		.limit(safeLimit);
 
 	const totalResult = await db
 		.select({
@@ -940,7 +1139,15 @@ export async function getMarketsOptimized(
 		};
 	});
 
-	markets.sort((a, b) => b.hn_score - a.hn_score);
+	markets.sort((a, b) => {
+		const hnScoreDiff = b.hn_score - a.hn_score;
+		if (hnScoreDiff !== 0) return hnScoreDiff;
+		const conditionDiff = String(a.conditionId ?? "").localeCompare(
+			String(b.conditionId ?? ""),
+		);
+		if (conditionDiff !== 0) return conditionDiff;
+		return String(a.outcome ?? "").localeCompare(String(b.outcome ?? ""));
+	});
 
 	return { total, markets };
 }

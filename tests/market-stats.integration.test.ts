@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/init";
 import { getMarketByCondition } from "@/lib/db/queries";
+import { setupTestingSchema } from "./helpers/testingSchema";
 import {
 	markets,
 	marketTokens,
@@ -11,6 +12,8 @@ import {
 import { SIDE } from "@/lib/types";
 import { InsiderDetector, NotInsiderDetector } from "@/services/detector";
 import { PolymarketPipe } from "@/services/pipe";
+
+setupTestingSchema();
 
 interface TestablePipe {
 	initialized: boolean;

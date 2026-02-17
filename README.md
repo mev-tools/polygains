@@ -95,14 +95,14 @@ bun run src/services/server.ts
 | Endpoint | Description |
 |----------|-------------|
 | `GET /health` | Health check |
-| `GET /api/stats` | Insider trading statistics |
-| `GET /api/global-stats` | Global market statistics |
-| `GET /api/markets` | List markets with pagination |
-| `GET /api/market/:id` | Get specific market details |
-| `GET /api/insiders` | List insider addresses |
-| `GET /api/insider-trades/:address` | Get trades for an address |
-| `GET /api/alerts` | Insider alerts with filtering |
-| `GET /api/categories` | Market categories |
+| `GET /stats` | Insider trading statistics |
+| `GET /global-stats` | Global market statistics |
+| `GET /markets` | List markets with pagination |
+| `GET /market/:id` | Get specific market details |
+| `GET /insiders` | List insider addresses |
+| `GET /insider-trades/:address` | Get trades for an address |
+| `GET /alerts` | Insider alerts with filtering |
+| `GET /categories` | Market categories |
 
 ## Environment Variables
 
@@ -214,8 +214,8 @@ make run-frontend    # Run frontend only
 │  • /alerts - Recent insider alerts                      │
 │  • /insiders - List of insiders                         │
 │  • /insider-trades/:address - Trades for address        │
-│  • /api/markets - Market list (paginated, cached)       │
-│  • /api/market/:conditionId - Market details            │
+│  • /markets - Market list (paginated, cached)       │
+│  • /market/:conditionId - Market details            │
 └──────────────────┬──────────────────────────────────────┘
                    │ Reads from
                    ▼
@@ -299,7 +299,7 @@ curl http://localhost:4000/health
 curl http://localhost:4000/global-stats
 
 # Markets (paginated)
-curl "http://localhost:4000/api/markets?page=1&limit=10"
+curl "http://localhost:4000/markets?page=1&limit=10"
 ```
 
 ## Environment Variables

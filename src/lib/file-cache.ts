@@ -43,7 +43,7 @@ async function ensureCacheDir(): Promise<void> {
 }
 
 function getCacheFilePath(key: string): string {
-	return path.join(CACHE_DIR, `${key}.json`);
+	return path.join(CACHE_DIR, `${key}1.json`);
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
 	getCategories,
+	getCategoriesWithCounts,
 	getCurrentBlock,
 	getGlobalStats,
 	getInsiderAlertsOptimized,
@@ -31,6 +32,7 @@ const getCorsHeaders = (req: Request): Record<string, string> => {
 	const allowedOrigins = [
 		"https://polygains.com",
 		"https://www.polygains.com",
+		"https://staging.polygains.com",
 		"https://api.polygains.com",
 		"http://localhost:4033",
 		"http://127.0.0.1:4033",
@@ -148,6 +150,14 @@ export function createServer() {
 			}
 
 			if (
+				url.pathname === "/categories-with-counts" ||
+				url.pathname === "/api/categories-with-counts"
+			) {
+				const categories = await getCategoriesWithCounts();
+				return json(categories, 200, undefined, req);
+			}
+
+			if (
 				url.pathname === "/api/markets" ||
 				url.pathname === "/markets" ||
 				url.pathname === "/api/top-liquidity-markets" ||
@@ -159,11 +169,21 @@ export function createServer() {
 				);
 				if (cached) return json(cached, 200, undefined, req);
 
-				// Use optimized version with file caching - always returns 4 top markets
+				const page = parsePositiveInt(
+					url.searchParams.get("page"),
+					DEFAULT_PAGE,
+				);
+				const limit = Math.min(
+					parsePositiveInt(url.searchParams.get("limit"), DEFAULT_LIMIT),
+					MAX_LIMIT,
+				);
 				const closed = parseOptionalBoolean(url.searchParams.get("close"));
-				const { markets, total } = await getMarketsOptimized(closed);
-				// Return as page 1 with limit 4 for compatibility
-				const pagination = makePagination(1, 4, total);
+				const { markets, total } = await getMarketsOptimized(
+					page,
+					limit,
+					closed,
+				);
+				const pagination = makePagination(page, limit, total);
 				const responseData = { data: markets, pagination };
 				await setCache(cacheKey, responseData, CACHE_TTL_MS);
 				return json(responseData, 200, undefined, req);
@@ -271,11 +291,21 @@ export function createServer() {
 				);
 				if (cached) return json(cached, 200, undefined, req);
 
-				// Use optimized version with file caching - always returns 6 most recent
+				const page = parsePositiveInt(
+					url.searchParams.get("page"),
+					DEFAULT_PAGE,
+				);
+				const limit = Math.min(
+					parsePositiveInt(url.searchParams.get("limit"), DEFAULT_LIMIT),
+					MAX_LIMIT,
+				);
 				const category = parseOptionalString(url.searchParams.get("category"));
-				const { alerts, total } = await getInsiderAlertsOptimized(category);
-				// Return as page 1 with limit 6 for compatibility
-				const pagination = makePagination(1, 6, total);
+				const { alerts, total } = await getInsiderAlertsOptimized(
+					page,
+					limit,
+					category,
+				);
+				const pagination = makePagination(page, limit, total);
 				const responseData = { data: alerts, pagination };
 				await setCache(cacheKey, responseData, CACHE_TTL_MS);
 				return json(responseData, 200, undefined, req);

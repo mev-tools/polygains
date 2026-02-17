@@ -61,9 +61,11 @@ try {
 	// Extract script tags
 	const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
 	const scripts = [];
-	let match;
+	let match: RegExpExecArray | null = null;
 
-	while ((match = scriptRegex.exec(text)) !== null) {
+	while (true) {
+		match = scriptRegex.exec(text);
+		if (match === null) break;
 		const src = match[0].match(/src=["']([^"']+)["']/);
 		const content = match[1]?.trim();
 

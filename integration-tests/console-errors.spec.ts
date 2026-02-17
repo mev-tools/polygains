@@ -121,12 +121,16 @@ test.describe("Console Error Tests", () => {
 		// Print errors if any
 		if (consoleErrors.length > 0) {
 			console.log("\n⚠️ Console Errors found:");
-			consoleErrors.forEach((err) => console.log(`  - ${err}`));
+			for (const err of consoleErrors) {
+				console.log(`  - ${err}`);
+			}
 		}
 
 		if (pageErrors.length > 0) {
 			console.log("\n⚠️ Page Errors found:");
-			pageErrors.forEach((err) => console.log(`  - ${err}`));
+			for (const err of pageErrors) {
+				console.log(`  - ${err}`);
+			}
 		}
 
 		// The test passes - this is for diagnostic purposes

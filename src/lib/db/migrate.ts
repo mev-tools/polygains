@@ -1,12 +1,24 @@
 import { drizzle } from "drizzle-orm/bun-sql";
 import { migrate } from "drizzle-orm/bun-sql/migrator";
+import {
+	quotePgIdentifier,
+	resolveDbConnectionConfig,
+} from "@/lib/db/connection";
 
-const DATABASE_URL =
-	process.env.DATABASE_URL ||
-	"postgresql://postgres:postgres@127.0.0.1:5469/postgres";
+const dbConfig = resolveDbConnectionConfig();
+const DATABASE_URL = dbConfig.databaseUrl;
 
 export async function runMigrations() {
 	console.log("[Migration] Starting database migration via bun-sql...");
+	console.log(`[Migration] Target schema: ${dbConfig.schema}`);
+
+	// Ensure non-public schema exists before running unqualified migrations.
+	if (dbConfig.schema !== "public") {
+		const bootstrapDb = drizzle(dbConfig.baseDatabaseUrl);
+		await bootstrapDb.execute(
+			`CREATE SCHEMA IF NOT EXISTS ${quotePgIdentifier(dbConfig.schema)}`,
+		);
+	}
 
 	const db = drizzle(DATABASE_URL);
 

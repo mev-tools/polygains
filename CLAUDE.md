@@ -43,7 +43,7 @@ import index from "./index.html"
 Bun.serve({
   routes: {
     "/": index,
-    "/api/users/:id": {
+    "/users/:id": {
       GET: (req) => {
         return new Response(JSON.stringify({ id: req.params.id }));
       },

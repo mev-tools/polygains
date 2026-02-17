@@ -96,7 +96,9 @@ async function takePixel8Screenshot() {
 
 		if (overlaps.length > 0) {
 			console.log("Detected potential text overlaps:");
-			overlaps.forEach((o) => console.log(` - ${o}`));
+			for (const o of overlaps) {
+				console.log(` - ${o}`);
+			}
 		}
 	} catch (error) {
 		console.error("Error taking screenshot:", error);

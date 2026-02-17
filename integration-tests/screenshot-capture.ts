@@ -122,11 +122,9 @@ async function captureScreenshots() {
 					const allErrors = [...consoleErrors, ...pageErrors];
 					if (allErrors.length > 0) {
 						console.log(`     ⚠️  Errors: ${allErrors.length}`);
-						allErrors
-							.slice(0, 3)
-							.forEach((err) =>
-								console.log(`        - ${err.substring(0, 100)}`),
-							);
+						for (const err of allErrors.slice(0, 3)) {
+							console.log(`        - ${err.substring(0, 100)}`);
+						}
 					}
 
 					results.push({

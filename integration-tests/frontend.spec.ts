@@ -44,7 +44,7 @@ test.describe("Frontend E2E Tests", () => {
 	test("should load markets from API", async ({ request }) => {
 		const apiBaseUrl = process.env.API_BASE_URL || "http://localhost:4000";
 		const response = await request.get(
-			`${apiBaseUrl}/api/markets?page=1&limit=10`,
+			`${apiBaseUrl}/markets?page=1&limit=10`,
 		);
 
 		expect(response.ok()).toBeTruthy();

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/init";
 import { getInsiderAlerts } from "@/lib/db/queries";
+import { setupTestingSchema } from "./helpers/testingSchema";
 import {
 	accountWalletMap,
 	insiderPositions,
@@ -10,6 +11,8 @@ import {
 	tokenMarketLookup,
 	tokenStats,
 } from "@/lib/db/schema";
+
+setupTestingSchema();
 
 async function cleanupFixtures(params: {
 	conditionId: string;

@@ -1,3 +1,4 @@
+"use client";
 import useSWR from "swr";
 import { fetchCategoriesWithCounts, type CategoryCount } from "@/api/terminalApi";
 import { swrKeys } from "@/hooks/swr/keys";
@@ -41,7 +42,7 @@ const DEFAULT_CATEGORIES: CategoryOption[] = [
 function groupCategories(categories: CategoryCount[]): CategoryOption[] {
 	// Start with deep-cloned defaults so we never mutate the shared constant
 	const result: CategoryOption[] = DEFAULT_CATEGORIES.map(c => ({ ...c }));
-	
+
 	// Track which additional categories to add
 	const additionalCategories: CategoryOption[] = [];
 
@@ -49,7 +50,7 @@ function groupCategories(categories: CategoryCount[]): CategoryOption[] {
 		if (cat.name === "ALL") continue;
 
 		const upperName = cat.name.toUpperCase();
-		
+
 		// Check if this is one of our default categories
 		const defaultIndex = result.findIndex((c) => c.name === upperName);
 		if (defaultIndex >= 0) {
@@ -62,8 +63,8 @@ function groupCategories(categories: CategoryCount[]): CategoryOption[] {
 		} else if (cat.group && PRIORITY_CATEGORIES[cat.group]) {
 			// This is a grouped category - add to additional if not already present
 			const groupName = cat.group.toUpperCase();
-			if (!result.find((c) => c.name === groupName) && 
-			    !additionalCategories.find((c) => c.name === groupName)) {
+			if (!result.find((c) => c.name === groupName) &&
+				!additionalCategories.find((c) => c.name === groupName)) {
 				additionalCategories.push({
 					name: groupName,
 					count: cat.count,

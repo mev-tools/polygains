@@ -153,8 +153,17 @@ const result = await Bun.build({
 	minify: true,
 	target: "browser",
 	sourcemap: "linked",
+	alias: {
+		react: "preact/compat",
+		"react-dom/client": "preact/compat",
+		"react-dom": "preact/compat",
+		"react/jsx-runtime": "preact/jsx-runtime",
+	},
 	define: {
-		"process.env.NODE_ENV": JSON.stringify("production"),
+		"process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV || "production"),
+		"process.env.BUN_PUBLIC_API_BASE_URL": JSON.stringify(
+			process.env.BUN_PUBLIC_API_BASE_URL || "https://api.polygains.com",
+		),
 	},
 	...cliConfig,
 });

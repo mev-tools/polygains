@@ -1,3 +1,4 @@
+"use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	useTerminalDataDispatch,
@@ -326,8 +327,8 @@ export function useTerminalController() {
 
 	const currentBlockText = String(
 		insiderStatsQuery.stats?.current_block ??
-			healthQuery.health?.current_block ??
-			"--",
+		healthQuery.health?.current_block ??
+		"--",
 	);
 
 	const syncState = {

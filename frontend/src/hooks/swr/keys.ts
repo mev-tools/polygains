@@ -1,3 +1,4 @@
+"use client";
 export const swrKeys = {
 	health: () => ["health"] as const,
 	insiderStats: () => ["stats", "insider"] as const,

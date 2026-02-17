@@ -1,3 +1,4 @@
+"use client";
 import type { SWRConfiguration } from "swr";
 import { swrJsonFetcher } from "@/hooks/swr/fetcher";
 import { SWR_DEFAULTS } from "@/hooks/swr/options";

@@ -1,3 +1,4 @@
+"use client";
 function resolveApiBase(): string {
 	const raw =
 		(typeof process !== "undefined"

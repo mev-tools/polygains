@@ -1,3 +1,4 @@
+"use client";
 import { useEffect } from "react";
 import useSWR from "swr";
 import useSWRInfinite from "swr/infinite";

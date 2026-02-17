@@ -1,3 +1,4 @@
+"use client";
 import useSWR from "swr";
 import { fetchHealth } from "@/api/terminalApi";
 import { SWR_REFRESH } from "@/hooks/swr/options";

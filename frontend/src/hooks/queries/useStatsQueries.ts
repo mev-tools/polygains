@@ -1,3 +1,4 @@
+"use client";
 import useSWR from "swr";
 import { fetchGlobalStats, fetchInsiderStats } from "@/api/terminalApi";
 import { swrKeys } from "@/hooks/swr/keys";

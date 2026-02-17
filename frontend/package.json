@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --hot src/index.ts",
-		"build": "bun build.ts  --outdir=./../public/dist --minify --sourcemap=linked --external=react,react-dom",
+		"build": "NODE_ENV=production BUN_PUBLIC_API_BASE_URL=https://api.polygains.com bun build.ts --outdir=./../public/dist --minify --sourcemap=linked --external=react,react-dom",
 		"start": "NODE_ENV=production bun src/index.ts",
 		"lint": "biome lint .",
 		"lint:fix": "biome check --write --unsafe ."

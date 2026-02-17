@@ -1,10 +1,11 @@
-import React from "react";
 import {
+	createContext,
 	useContext,
 	useMemo,
 	useReducer,
 	type Dispatch,
 } from "react";
+import type React from "react";
 import {
 	initialTerminalUiState,
 	terminalUiReducer,
@@ -21,10 +22,10 @@ const noopDispatch: Dispatch<TerminalUiAction> = () => {
 	}
 };
 
-const TerminalUiStateContext = React.createContext<TerminalUiState>(
+const TerminalUiStateContext = createContext<TerminalUiState>(
 	initialTerminalUiState,
 );
-const TerminalUiDispatchContext = React.createContext<Dispatch<TerminalUiAction>>(
+const TerminalUiDispatchContext = createContext<Dispatch<TerminalUiAction>>(
 	noopDispatch,
 );
 

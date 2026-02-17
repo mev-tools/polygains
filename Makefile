@@ -93,10 +93,7 @@ deploy-frontend: ## Build and deploy frontend to Cloudflare Pages
 	@echo "🏗️  Building frontend..."
 	@cd frontend && bun install && bun build.ts
 	@echo "🚀 Deploying to Cloudflare Pages..."
-	@CLOUDFLARE_ACCOUNT_ID=REDACTED_ACCOUNT_ID \
-	 CLOUDFLARE_EMAIL=REDACTED_EMAIL \
-	 CLOUDFLARE_API_KEY=REDACTED_API_KEY \
-	 npx wrangler pages deploy ./public/dist --project-name polygains --branch main
+	@npx wrangler pages deploy ./public/dist --project-name polygains --branch main
 	@echo "✅ Frontend deployed to https://polygains.com"
 
 # The following target is deprecated in favor of Cloudflare Pages

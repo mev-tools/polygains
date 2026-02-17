@@ -175,6 +175,20 @@ if (existsSync(redirectsSrc)) {
 	console.log("📝 Copied _redirects for Cloudflare Pages\n");
 }
 
+// Copy static assets from public/ to dist/
+const publicDir = path.resolve("public");
+if (existsSync(publicDir)) {
+	const publicAssets = [...new Bun.Glob("**/*").scanSync(publicDir)];
+	for (const asset of publicAssets) {
+		const srcPath = path.join(publicDir, asset);
+		const destPath = path.join(outdir, asset);
+		await Bun.write(destPath, Bun.file(srcPath));
+	}
+	if (publicAssets.length > 0) {
+		console.log(`📦 Copied ${publicAssets.length} static asset(s) from public/\n`);
+	}
+}
+
 const end = performance.now();
 
 const outputTable = result.outputs.map((output) => ({

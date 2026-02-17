@@ -367,3 +367,34 @@ export async function fetchMarket(
 		return null;
 	}
 }
+
+export interface SignupResponse {
+	success: boolean;
+	message?: string;
+	error?: string;
+}
+
+export async function postSignup(email: string): Promise<SignupResponse> {
+	const response = await fetch(buildApiUrl("/signup"), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ email }),
+	});
+
+	const text = await response.text();
+	let data: SignupResponse;
+	try {
+		data = JSON.parse(text) as SignupResponse;
+	} catch {
+		data = { success: false, error: "Invalid response from server" };
+	}
+
+	if (!response.ok) {
+		return {
+			success: false,
+			error: data.error || `Error ${response.status}: ${response.statusText}`,
+		};
+	}
+
+	return data;
+}

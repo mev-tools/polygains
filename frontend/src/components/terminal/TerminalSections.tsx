@@ -296,17 +296,33 @@ export function LiveTrackerControls({
 	);
 }
 
+"use client";
+import { useState } from "react";
+import { useSignupMutation } from "@/hooks/mutations/useSignupMutation";
+
 export function EmailSignup() {
+	const [email, setEmail] = useState("");
+	const { signup, isLoading, data, error, reset } = useSignupMutation();
+
+	const handleSubmit = async () => {
+		if (!email) return;
+		await signup(email);
+		setEmail("");
+	};
+
+	const showSuccess = data?.success;
+	const showError = error || (data && !data.success);
+
 	return (
 		<div className="card bg-base-300 shadow-xl mb-4 font-mono text-xs md:text-sm">
 			<div className="card-body p-4">
-				<div className="flex flex-col sm:flex-row items-center gap-4">
-					<div className="text-base-content/80 text-xs">
+				<div className="flex flex-col lg:flex-row items-center justify-center gap-4 lg:gap-6">
+					<div className="text-base-content/80 text-xs whitespace-nowrap">
 						<span className="text-primary font-bold">$</span> Subscribe to alerts
 					</div>
-					<div className="join w-full sm:w-auto">
+					<div className="join w-full lg:w-auto">
 						<div className="flex-1">
-							<label className="input validator join-item w-full sm:w-64">
+							<label className={`input validator join-item w-full sm:w-[32rem] ${showError ? 'input-error' : showSuccess ? 'input-success' : ''}`}>
 								<svg className="h-[1em] opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 									<g
 										strokeLinejoin="round"
@@ -319,38 +335,43 @@ export function EmailSignup() {
 										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
 									</g>
 								</svg>
-								<input type="email" placeholder="mail@site.com" required />
+								<input
+									type="email"
+									placeholder="mail@site.com"
+									required
+									value={email}
+									onChange={(e) => {
+										setEmail(e.target.value);
+										if (showSuccess || showError) reset();
+									}}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') handleSubmit();
+									}}
+								/>
+								{showSuccess && <span className="text-success">✓</span>}
+								{showError && <span className="text-error">✗</span>}
 							</label>
 							<div className="validator-hint hidden">Enter valid email address</div>
 						</div>
 						<button
-							className="btn btn-neutral join-item"
-							onClick={async () => {
-								const input = document.querySelector('input[type="email"]') as HTMLInputElement;
-								const email = input?.value;
-								if (!email) return;
-								try {
-									const response = await fetch('/api/signup', {
-										method: 'POST',
-										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({ email }),
-									});
-									if (response.ok) {
-										input.value = '';
-										alert('Subscribed successfully!');
-									} else {
-										const data = await response.json();
-										alert(data.error || 'Failed to subscribe');
-									}
-								} catch (e) {
-									alert('Failed to subscribe');
-								}
-							}}
+							className={`btn join-item ${isLoading ? 'btn-disabled' : showSuccess ? 'btn-success' : showError ? 'btn-error' : 'btn-neutral'}`}
+							onClick={handleSubmit}
+							disabled={isLoading || !email}
 						>
-							Join
+							{isLoading ? 'Sending...' : showSuccess ? 'Subscribed!' : showError ? 'Failed' : 'Join'}
 						</button>
 					</div>
 				</div>
+				{showError && (
+					<div className="text-error text-xs text-center mt-2">
+						{data?.error || error?.message || 'Failed to subscribe'}
+					</div>
+				)}
+				{showSuccess && (
+					<div className="text-success text-xs text-center mt-2">
+						{data?.message || 'Subscribed successfully!'}
+					</div>
+				)}
 			</div>
 		</div>
 	);

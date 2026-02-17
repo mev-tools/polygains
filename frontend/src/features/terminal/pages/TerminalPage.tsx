@@ -1,6 +1,7 @@
 import {
 	AlertsSection,
 	DetectionSection,
+	EmailSignup,
 	GlobalStatsSection,
 	LiveTrackerCards,
 	LiveTrackerControls,
@@ -82,7 +83,7 @@ export function TerminalPage() {
 
 					<div className="mt-8 mb-2">
 						<h2 className="text-xs font-bold text-base-content/70 uppercase tracking-wider font-mono">
-							LIVE_TRACKER
+							COPY_TRADER
 						</h2>
 					</div>
 					<SimulationHeader />
@@ -105,6 +106,8 @@ export function TerminalPage() {
 						onSideToggle={vm.liveControls.onSideToggle}
 					/>
 
+
+
 					<LiveTrackerCards
 						totalBet={vm.tracker.totalBet}
 						openInterest={vm.tracker.openInterest}
@@ -120,7 +123,7 @@ export function TerminalPage() {
 						onRunBacktest={vm.tracker.onRunBacktest}
 					/>
 
-
+					<EmailSignup />
 
 					<TerminalBanner currentBlock={vm.currentBlockText} />
 					<TerminalFooter />

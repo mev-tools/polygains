@@ -220,16 +220,7 @@ export function LiveTrackerControls({
 								</span>
 							</label>
 						</div>
-						<button
-							type="button"
-							disabled={disabled}
-							className={`btn btn-xs min-w-[36px] min-h-[36px] ${soundEnabled ? "btn-success" : "btn-ghost border-dashed"}`}
-							onClick={() => onSoundToggle(!soundEnabled)}
-							aria-label={soundEnabled ? "Sound Enabled" : "Sound Muted"}
-							title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
-						>
-							{soundEnabled ? "🔊" : "🔇"}
-						</button>
+
 						<div className="divider divider-horizontal mx-0" />
 						<div className="flex gap-3 items-center">
 							<label className="cursor-pointer label p-0 gap-2 whitespace-nowrap">
@@ -305,6 +296,66 @@ export function LiveTrackerControls({
 	);
 }
 
+export function EmailSignup() {
+	return (
+		<div className="card bg-base-300 shadow-xl mb-4 font-mono text-xs md:text-sm">
+			<div className="card-body p-4">
+				<div className="flex flex-col sm:flex-row items-center gap-4">
+					<div className="text-base-content/80 text-xs">
+						<span className="text-primary font-bold">$</span> Subscribe to alerts
+					</div>
+					<div className="join w-full sm:w-auto">
+						<div className="flex-1">
+							<label className="input validator join-item w-full sm:w-64">
+								<svg className="h-[1em] opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+									<g
+										strokeLinejoin="round"
+										strokeLinecap="round"
+										strokeWidth="2.5"
+										fill="none"
+										stroke="currentColor"
+									>
+										<rect width="20" height="16" x="2" y="4" rx="2"></rect>
+										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+									</g>
+								</svg>
+								<input type="email" placeholder="mail@site.com" required />
+							</label>
+							<div className="validator-hint hidden">Enter valid email address</div>
+						</div>
+						<button
+							className="btn btn-neutral join-item"
+							onClick={async () => {
+								const input = document.querySelector('input[type="email"]') as HTMLInputElement;
+								const email = input?.value;
+								if (!email) return;
+								try {
+									const response = await fetch('/api/signup', {
+										method: 'POST',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({ email }),
+									});
+									if (response.ok) {
+										input.value = '';
+										alert('Subscribed successfully!');
+									} else {
+										const data = await response.json();
+										alert(data.error || 'Failed to subscribe');
+									}
+								} catch (e) {
+									alert('Failed to subscribe');
+								}
+							}}
+						>
+							Join
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 export function LiveTrackerCards({
 	totalBet,
 	openInterest,
@@ -333,7 +384,7 @@ export function LiveTrackerCards({
 				</div>
 			</div>
 
-			<div className="stat relative">
+			<div className="stat">
 				<div className="stat-title text-base-content/70 uppercase text-xs tracking-wider font-bold">
 					PnL
 				</div>
@@ -341,27 +392,6 @@ export function LiveTrackerCards({
 					className={`stat-value text-xl font-mono ${realizedPnL > 0 ? "text-accent" : realizedPnL < 0 ? "text-error" : ""}`}
 				>
 					{formatPnL(realizedPnL)}
-				</div>
-				<div className="stat-actions absolute top-0 right-0 bottom-0 flex items-center pr-4">
-					<button
-						type="button"
-						className={`btn btn-sm ${backtestRunning ? "btn-disabled" : "btn-outline btn-accent"} h-full rounded-none border-t-0 border-b-0 border-r-0 border-l px-4`}
-						disabled={backtestRunning}
-						onClick={onRunBacktest}
-						aria-label={
-							backtestRunning
-								? "Processing backtest"
-								: backtestCanContinue
-									? "Continue backtest"
-									: "Run backtest"
-						}
-					>
-						{backtestRunning
-							? "Processing..."
-							: backtestCanContinue
-								? "Continue Backtest"
-								: "Run Backtest"}
-					</button>
 				</div>
 			</div>
 
@@ -956,7 +986,6 @@ export function TerminalBanner({ currentBlock }: BannerProps) {
 						</span>
 						<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
 					</div>
-					hi
 				</div>
 			</div>
 		</div>

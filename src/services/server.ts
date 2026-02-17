@@ -316,6 +316,47 @@ export function createServer() {
 				return json({ block }, 200, undefined, req);
 			}
 
+			if (url.pathname === "/api/signup" || url.pathname === "/signup") {
+				if (req.method !== "POST") {
+					return json({ error: "Method not allowed" }, 405, undefined, req);
+				}
+
+				try {
+					const body = await req.json();
+					const email = body?.email?.trim();
+
+					// Validate email
+					const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+					if (!email || !emailRegex.test(email)) {
+						return json({ error: "Invalid email address" }, 400, undefined, req);
+					}
+
+					// Forward to Google Apps Script
+					const response = await fetch(
+						"https://script.google.com/macros/s/AKfycbwP10TDgJrd8n44PJdawZPy6gWjyIfOIrx__A1sRV3YoO6eWIpxe2h_5kRlAXgpcdwQ_g/exec",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ mail: email }),
+						},
+					);
+
+					if (!response.ok) {
+						throw new Error(`Google Script returned ${response.status}`);
+					}
+
+					return json({ success: true, message: "Subscribed successfully" }, 200, undefined, req);
+				} catch (error) {
+					console.error("[Signup] Error:", error);
+					return json(
+						{ error: "Failed to process signup" },
+						500,
+						undefined,
+						req,
+					);
+				}
+			}
+
 			// API-only server - no static file serving
 			// Return 404 for non-API routes
 			return json({ error: "Not Found" }, 404, undefined, req);

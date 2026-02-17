@@ -1,6 +1,7 @@
 export {
 	AlertsSection,
 	DetectionSection,
+	EmailSignup,
 	GlobalStatsSection,
 	LiveTrackerCards,
 	LiveTrackerControls,

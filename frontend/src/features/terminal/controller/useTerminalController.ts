@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	useTerminalDataDispatch,
 	useTerminalDataState,
@@ -328,19 +328,11 @@ export function useTerminalController() {
 		dataDispatch({ type: "BACKTEST_START", payload: { runId } });
 	}, [dataDispatch]);
 
-<<<<<<< HEAD
-	const currentBlockText = String(
-		insiderStatsQuery.stats?.current_block ??
-		healthQuery.health?.current_block ??
-		"--",
-	);
-=======
 	const baseBlock =
 		insiderStatsQuery.stats?.current_block ?? healthQuery.health?.current_block;
 	const currentBlockText = baseBlock
 		? String(Number(baseBlock) + blockOffset)
 		: "--";
->>>>>>> fde0c38 (feat: update terminal components and move assets to frontend/public)
 
 	const syncState = {
 		label: healthQuery.error ? "SYNC: ERROR" : "SYNC: ONLINE",

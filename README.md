@@ -1,48 +1,102 @@
 # PolyGains
 
-A high-performance analytics platform for tracking insider trading patterns and market data on Polymarket. Built with Bun, TypeScript, and Subsquid.
+A high-performance analytics platform for tracking insider trading patterns and market data on Polymarket. Built with Bun, TypeScript, PostgreSQL, and Subsquid.
 
 ## Features
 
-- **Real-time Data Ingestion**: Streams Polymarket exchange events via Subsquid portal
-- **Insider Trading Detection**: Identifies suspicious trading patterns and whale movements
-- **REST API**: Full-featured API with pagination, filtering, and caching
-- **Web Dashboard**: React-based frontend with real-time market insights
+- **Real-time Data Ingestion**: Streams Polymarket exchange events via Subsquid portal from Polygon Mainnet
+- **Insider Trading Detection**: Identifies suspicious trading patterns using XXHash32Set-based detection
+- **REST API**: Full-featured API with pagination, filtering, and CORS support
+- **Web Dashboard**: Preact-based frontend with TailwindCSS, DaisyUI, and SWR for real-time insights
 - **Database**: PostgreSQL with Drizzle ORM for reliable data persistence
+
+## Tech Stack
+
+- **Runtime**: [Bun](https://bun.sh) v1.1.0+
+- **Language**: TypeScript
+- **Database**: PostgreSQL 15+ with Drizzle ORM
+- **Frontend**: Preact + TailwindCSS + DaisyUI + SWR
+- **Process Management**: PM2
+- **Testing**: Bun test + Playwright (E2E)
+- **Linting**: Biome
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Frontend   │────▶│   Bun API   │────▶│  PostgreSQL │
-│  (React)    │     │   Server    │     │   (Drizzle) │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │  Subsquid   │
-                    │   Portal    │
-                    │ (Polygon    │
-                    │  Mainnet)   │
-                    └─────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (Port 4033)                  │
+│  Bun.serve() + Preact + TailwindCSS + DaisyUI + SWR     │
+└──────────────────┬──────────────────────────────────────┘
+                   │ Proxies API calls
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│                  API Server (Port 4069)                  │
+│              Bun.serve() REST API + CORS                 │
+└──────────────────┬──────────────────────────────────────┘
+                   │ Reads from
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│                Postgres (Port 5469)                      │
+│              Docker Container                            │
+└──────────────────┬──────────────────────────────────────┘
+                   │ Written to by
+                   ▼
+         ┌─────────────────────┬─────────────────────┐
+         │                     │                     │
+         ▼                     ▼                     ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Pipeline   │    │   Markets    │    │   Detector   │
+│              │    │   Service    │    │              │
+│ Processes    │    │              │    │ Detects      │
+│ blockchain   │    │ Fetches      │    │ insiders     │
+│ events from  │    │ Polymarket   │    │ using        │
+│ Subsquid     │    │ CLOB API     │    │ XXHash32Set  │
+└──────────────┘    └──────────────┘    └──────────────┘
 ```
 
 ## Project Structure
 
 ```
 polygains/
-├── frontend/          # React frontend (Bun + Vite + Tailwind)
-├── public/            # Static assets (favicons, images)
-│   ├── dist/          # Built frontend output
-│   ├── favicon*.png   # Favicon files (PNG/WebP/AVIF)
-│   ├── og-image.png   # Social preview images
-│   └── ...
 ├── src/
-│   ├── lib/           # Utilities, types, database schema
-│   ├── services/      # API server, data ingestion pipeline
-│   └── main.ts        # Application entry point
-├── drizzle/           # Database migrations
-└── tests/             # Test suites
+│   ├── lib/                    # Utilities, types, database schema
+│   │   ├── db/                 # Database: schema, migrations, queries
+│   │   ├── types/              # TypeScript type definitions
+│   │   ├── abi.ts              # Contract ABIs
+│   │   ├── const.ts            # Constants (START_BLOCK, contracts, etc.)
+│   │   ├── hash.ts             # Wallet hashing utilities
+│   │   ├── hashset.ts          # XXHash32Set implementation
+│   │   ├── parser.ts           # Blockchain event parsers
+│   │   └── utils.ts            # General utilities
+│   ├── services/               # Background services
+│   │   ├── server.ts           # REST API server (Bun.serve)
+│   │   ├── markets.ts          # Polymarket CLOB data fetcher
+│   │   ├── pipe.ts             # Subsquid pipeline processor
+│   │   ├── detector.ts         # Insider detection algorithms
+│   │   ├── buffer.ts           # Window buffer for aggregations
+│   │   ├── filter-persistor.ts # BloomFilter persistence
+│   │   └── positions-persistor.ts # Position data persistence
+│   └── main.ts                 # Pipeline entry point
+├── frontend/                   # Preact frontend (separate package)
+│   ├── src/
+│   │   ├── features/terminal/  # Main terminal feature
+│   │   ├── hooks/              # SWR hooks and queries
+│   │   ├── context/            # React contexts (UI, Data)
+│   │   └── reducers/           # State reducers
+│   ├── build.ts                # Production build script
+│   └── package.json            # Frontend dependencies
+├── drizzle/                    # Database migrations
+├── tests/                      # Unit and integration tests
+├── integration-tests/          # Playwright E2E tests
+├── public/                     # Static assets (favicons, built frontend)
+│   ├── dist/                   # Built frontend output
+│   ├── favicon*.png            # Favicon files
+│   ├── og-image.png            # Social preview images
+│   └── ...
+├── docs/                       # Architecture documentation
+├── Makefile                    # Primary command interface
+├── ecosystem.config.cjs        # PM2 process configuration
+└── compose.yml                 # PostgreSQL Docker service
 ```
 
 ## Quick Start
@@ -50,8 +104,7 @@ polygains/
 ### Prerequisites
 
 - [Bun](https://bun.sh) v1.1.0+
-- PostgreSQL 15+
-- (Optional) ClickHouse for analytics
+- Docker (for PostgreSQL)
 
 ### Installation
 
@@ -61,33 +114,62 @@ bun install
 
 # Set up environment
 cp .env.local.example .env
-# Edit .env with your database credentials
+# Edit .env with your configuration (or keep defaults for local dev)
 
-# Run database migrations
-bunx drizzle-kit migrate
+# Start all services (postgres + api + markets + pipeline + frontend)
+make start
 ```
 
-### Development
+### Service URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:4033 |
+| API Server | http://localhost:4069 |
+| PostgreSQL | localhost:5469 |
+
+## Makefile Commands
+
+All commands are managed through the Makefile:
 
 ```bash
-# Start the data ingestion pipeline
-bun run src/main.ts
+# Start/stop services
+make start             # Start everything
+make stop              # Stop all services
+make status            # View service status
+make restart           # Restart all services
 
-# In another terminal, start the API server
-bun run src/services/server.ts
+# View logs
+make logs              # All logs
+make logs-api          # API server only
+make logs-markets      # Markets service only
+make logs-pipeline     # Pipeline only
+make logs-frontend     # Frontend only
+make logs-db           # Postgres only
 
-# Start the frontend dev server
-cd frontend && bun dev
-```
+# Development (manual control)
+make dev-local         # Setup postgres, show manual run commands
+make run-server        # Run API server only (port 4069)
+make run-markets       # Run markets service only
+make run-pipeline      # Run pipeline only
+make run-frontend      # Run frontend only (port 4033)
 
-### Production Build
+# Database
+make db-generate       # Generate Drizzle migrations
+make db-migrate        # Apply migrations
+make db-prepare        # Generate + migrate
+make db-reset          # Reset database (WARNING: deletes data)
+make db-shell          # Open psql shell
 
-```bash
-# Build frontend
-cd frontend && bun run build.ts
+# Testing
+make test              # Run unit tests only
+make test-e2e          # Run Playwright E2E tests
+make test-all          # Run all tests
 
-# Start production server
-bun run src/services/server.ts
+# Build & Deploy
+make build-frontend    # Build frontend for production
+make deploy-frontend   # Deploy to Cloudflare Pages
+make clean             # Clean docker resources and processes
 ```
 
 ## API Endpoints
@@ -98,164 +180,58 @@ bun run src/services/server.ts
 | `GET /stats` | Insider trading statistics |
 | `GET /global-stats` | Global market statistics |
 | `GET /markets` | List markets with pagination |
-| `GET /market/:id` | Get specific market details |
-| `GET /insiders` | List insider addresses |
-| `GET /insider-trades/:address` | Get trades for an address |
+| `GET /market/:conditionId` | Get specific market details |
+| `GET /insiders` | List detected insider addresses (hashed) |
+| `GET /insider-trades/:hash` | Get trades for a hashed address |
 | `GET /alerts` | Insider alerts with filtering |
 | `GET /categories` | Market categories |
 
+## Database Schema
+
+Key tables:
+- `markets` - Polymarket market data
+- `market_tokens` - Token outcomes per market
+- `token_market_lookup` - Token ID to market mapping
+- `token_stats` - Aggregated token statistics
+- `insider_positions` - Persisted insider positions (hashed)
+- `detected_insiders` - Detected insider addresses
+- `account_stats` - Account trading statistics
+- `checkpoint` - Stream processing cursor
+- `detector_snapshots` - Insider detector state
+
 ## Environment Variables
 
+Copy `.env.local.example` to `.env` and configure:
+
 ```bash
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/polygains
+# PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=postgres
+POSTGRES_PORT=5469
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5469/postgres
 
 # API Server
-API_HOST=0.0.0.0
-API_PORT=4000
+API_HOST=127.0.0.1
+API_PORT=4069
 
-# Frontend (dev proxy)
-API_UPSTREAM_BASE_URL=http://127.0.0.1:4000
+# Frontend
+FRONTEND_HOST=127.0.0.1
+FRONTEND_PORT=4033
+API_UPSTREAM_BASE_URL=http://127.0.0.1:4069
+BUN_PUBLIC_API_BASE_URL=http://127.0.0.1:4069
+
+# Services
+FETCH_INTERVAL_MS=3600000  # 1 hour
+NODE_ENV=development
+
+# CORS (comma-separated origins)
+CORS_ORIGINS=http://localhost:4033,http://127.0.0.1:4033
 ```
-
-## Static Assets
-
-All files in `public/` are served at root path:
-
-- `/favicon.ico` - Multi-resolution ICO favicon
-- `/favicon-*.png` - PNG favicons (16/32/48px)
-- `/favicon-*.webp` - WebP favicons (compressed)
-- `/apple-touch-icon.png` - iOS home screen icon
-- `/android-chrome-*.png` - Android icons (192/512px)
-- `/og-image.png` - Open Graph social preview (1200×630)
-- `/twitter-card.png` - Twitter card image (1200×600)
-
-Built frontend assets are served from `public/dist/`.
-
-## License
-
-MIT
-
-# Startup Guide
-
-## Quick Start
-
-Start all services with one command:
-
-```bash
-make start
-```
-
-This will start:
-- **Postgres** (via Docker Compose on `localhost:5432`)
-- **API Server** (Bun on `http://localhost:4000`)
-- **Markets Service** (Fetches Polymarket data)
-- **Pipeline** (Blockchain event processing)
-- **Frontend** (Bun on `http://localhost:3001`)
-
-## Service URLs
-
-- **Frontend**: http://localhost:3001
-- **API Server**: http://localhost:4000
-- **Postgres**: localhost:5432 (TCP, bound to 127.0.0.1 only)
-
-## Useful Commands
-
-```bash
-# Start all services
-make start
-
-# Stop all services
-make stop
-
-# View service status
-make status
-
-# View all logs
-make logs
-
-# View individual service logs
-make logs-api        # API server
-make logs-frontend   # Frontend
-make logs-markets    # Markets service
-make logs-pipeline   # Blockchain pipeline
-make logs-db         # Postgres
-
-# Run tests
-make test            # Unit tests
-make test-e2e        # E2E integration tests
-make test-all        # All tests
-
-# Development (manual control)
-make dev-local       # Setup postgres, show manual run commands
-make run-server      # Run API server only
-make run-markets     # Run markets service only
-make run-pipeline    # Run pipeline only
-make run-frontend    # Run frontend only
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Frontend (Port 3001)                  │
-│  Bun.serve() + React + Preact + TailwindCSS + DaisyUI  │
-└──────────────────┬──────────────────────────────────────┘
-                   │ Proxies API calls
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│                  API Server (Port 4000)                  │
-│              Bun.serve() REST API + CORS                 │
-│                                                          │
-│  Endpoints:                                              │
-│  • /health - Health check                               │
-│  • /stats - Insider statistics                          │
-│  • /global-stats - Global statistics                    │
-│  • /alerts - Recent insider alerts                      │
-│  • /insiders - List of insiders                         │
-│  • /insider-trades/:address - Trades for address        │
-│  • /markets - Market list (paginated, cached)       │
-│  • /market/:conditionId - Market details            │
-└──────────────────┬──────────────────────────────────────┘
-                   │ Reads from
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│                Postgres (Port 5432)                      │
-│              Docker Container                            │
-│                                                          │
-│  Tables:                                                 │
-│  • markets - Market data                                │
-│  • market_tokens - Token details                        │
-│  • token_market_lookup - Token-to-market mapping        │
-│  • bloomfilter_snapshots - BloomFilter persistence      │
-└──────────────────┬──────────────────────────────────────┘
-                   │ Written to by
-                   ▼
-         ┌─────────────────────┬─────────────────────┐
-         │                     │                     │
-         ▼                     ▼                     ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   Pipeline   │    │   Markets    │    │ BloomFilters │
-│              │    │   Service    │    │              │
-│ Processes    │    │              │    │ InsiderDet.  │
-│ blockchain   │    │ Fetches      │    │ NotInsider.  │
-│ events from  │    │ Polymarket   │    │              │
-│ Subsquid     │    │ CLOB API     │    │ Detects      │
-│              │    │ every hour   │    │ insiders     │
-└──────────────┘    └──────────────┘    └──────────────┘
-```
-
-## How It Works
-
-1. **Postgres** stores all data (markets, trades, bloomfilters)
-2. **Markets Service** fetches Polymarket data every hour and upserts to DB
-3. **Pipeline** processes blockchain events, detects insider trading, stores results
-4. **API Server** serves data from database to frontend
-5. **Frontend** displays data and proxies API calls
 
 ## Process Management
 
-All services (except Postgres) are managed by **PM2**:
+All services run under PM2 (defined in `ecosystem.config.cjs`):
 
 ```bash
 # View PM2 dashboard
@@ -278,7 +254,11 @@ bunx pm2 stop api-server
 
 ### Unit Tests
 ```bash
-bun test tests/*.test.ts
+# Run all unit tests
+make test
+
+# Run specific test file
+bun test tests/parser.test.ts
 ```
 
 ### E2E Integration Tests
@@ -286,44 +266,56 @@ bun test tests/*.test.ts
 # Make sure services are running first
 make start
 
-# Run e2e tests
+# Run E2E tests
 make test-e2e
+
+# Or directly
+bunx playwright test
 ```
 
 ### Manual API Testing
 ```bash
 # Health check
-curl http://localhost:4000/health
+curl http://localhost:4069/health
 
 # Global stats
-curl http://localhost:4000/global-stats
+curl http://localhost:4069/global-stats
 
 # Markets (paginated)
-curl "http://localhost:4000/markets?page=1&limit=10"
+curl "http://localhost:4069/markets?page=1&limit=10"
 ```
 
-## Environment Variables
+## Static Assets
 
-The project uses `.env.local` for configuration:
+All files in `public/` are served at root path:
+
+- `/favicon.ico` - Multi-resolution ICO favicon
+- `/favicon-*.png` - PNG favicons (16/32/48px)
+- `/favicon-*.webp` - WebP favicons (compressed)
+- `/apple-touch-icon.png` - iOS home screen icon
+- `/android-chrome-*.png` - Android icons (192/512px)
+- `/og-image.png` - Open Graph social preview (1200×630)
+- `/twitter-card.png` - Twitter card image (1200×600)
+
+Built frontend assets are served from `public/dist/`.
+
+## Code Style
+
+Linting is handled by Biome:
 
 ```bash
-# Database
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=postgres
-POSTGRES_PORT=5432
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+# Check linting
+bun run lint
 
-# API Server
-PORT=4000
-
-# Markets Service
-FETCH_INTERVAL_MS=3600000  # 1 hour
-
-# Frontend
-PORT=3001
-API_BASE_URL=http://localhost:4000
+# Fix linting issues
+bun run lint:fix
 ```
+
+Key conventions:
+- Use double quotes for strings
+- Path alias `@/*` maps to `src/*`
+- Prefer Bun APIs over Node.js equivalents
+- Bun automatically loads `.env` files (no `dotenv` needed)
 
 ## Troubleshooting
 
@@ -354,11 +346,10 @@ make start
 
 ### Port already in use
 ```bash
-# Find process using port 4000
-lsof -i :4000
-
-# Find process using port 3001
-lsof -i :3001
+# Find process using ports
+lsof -i :4069  # API port
+lsof -i :4033  # Frontend port
+lsof -i :5469  # Postgres port
 
 # Kill the process if needed
 kill -9 <PID>
@@ -373,3 +364,14 @@ bun install
 rm -rf node_modules
 bun install
 ```
+
+## References
+
+- `CLAUDE.md` - Bun-specific coding guidelines
+- `AGENTS.md` - AI agent guide for the codebase
+- `docs/DESIGN.md` - Frontend architecture design
+- `BACKTEST.md` - Backtest implementation notes
+
+## License
+
+MIT

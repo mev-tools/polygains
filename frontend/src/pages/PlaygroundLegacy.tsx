@@ -84,6 +84,7 @@ export function MainV2Page() {
 								stroke="currentColor"
 								strokeWidth="2"
 							>
+								<title>Insider Alerts Icon</title>
 								<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
 							</svg>
 							{/* Pulse effect */}
@@ -112,12 +113,12 @@ export function MainV2Page() {
 						<div className="flex gap-2">
 							{categories.map((cat) => (
 								<button
+									type="button"
 									key={cat}
-									className={`btn btn-sm border-0 font-medium tracking-wide transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-										activeCategory === cat
-											? "bg-white/10 text-white shadow-sm ring-1 ring-white/20"
-											: "bg-transparent text-white/70 hover:text-white/70 hover:bg-white/5"
-									}`}
+									className={`btn btn-sm border-0 font-medium tracking-wide transition-all duration-200 whitespace-nowrap min-h-[44px] ${activeCategory === cat
+										? "bg-white/10 text-white shadow-sm ring-1 ring-white/20"
+										: "bg-transparent text-white/70 hover:text-white/70 hover:bg-white/5"
+										}`}
 									onClick={() => setActiveCategory(cat)}
 									aria-pressed={activeCategory === cat}
 									aria-label={`Filter by category ${cat}`}
@@ -152,11 +153,10 @@ export function MainV2Page() {
 									>
 										{/* Icon */}
 										<div
-											className={`flex-none w-11 h-11 rounded-xl flex items-center justify-center font-black text-[10px] tracking-wide shadow-lg ${
-												isYes
-													? "bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-400 ring-1 ring-emerald-500/20 shadow-emerald-900/20"
-													: "bg-gradient-to-br from-rose-500/20 to-pink-500/20 text-rose-400 ring-1 ring-rose-500/20 shadow-rose-900/20"
-											}`}
+											className={`flex-none w-11 h-11 rounded-xl flex items-center justify-center font-black text-[10px] tracking-wide shadow-lg ${isYes
+												? "bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-400 ring-1 ring-emerald-500/20 shadow-emerald-900/20"
+												: "bg-gradient-to-br from-rose-500/20 to-pink-500/20 text-rose-400 ring-1 ring-rose-500/20 shadow-rose-900/20"
+												}`}
 										>
 											{item.outcome?.toUpperCase().slice(0, 3)}
 										</div>
@@ -237,11 +237,10 @@ export function MainV2Page() {
 											</td>
 											<td className="py-4 px-6 text-left">
 												<div
-													className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wider uppercase ring-1 ring-inset ${
-														isYes
-															? "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20"
-															: "bg-rose-500/10 text-rose-400 ring-rose-500/20"
-													}`}
+													className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wider uppercase ring-1 ring-inset ${isYes
+														? "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20"
+														: "bg-rose-500/10 text-rose-400 ring-rose-500/20"
+														}`}
 												>
 													{item.outcome}
 												</div>
@@ -265,6 +264,7 @@ export function MainV2Page() {
 											</td>
 											<td className="py-4 px-6 text-center">
 												<button
+													type="button"
 													className="btn btn-ghost btn-sm text-white/80 hover:text-white hover:bg-white/10 min-w-[44px] min-h-[44px]"
 													aria-label={`Lookup trader ${item.user}`}
 													title={`Lookup trader ${item.user}`}
@@ -275,6 +275,7 @@ export function MainV2Page() {
 														fill="currentColor"
 														className="w-4 h-4"
 													>
+														<title>Search Icon</title>
 														<path
 															fillRule="evenodd"
 															d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
@@ -300,6 +301,7 @@ export function MainV2Page() {
 								viewBox="0 0 24 24"
 								stroke="currentColor"
 							>
+								<title>No Results Icon</title>
 								<path
 									strokeLinecap="round"
 									strokeLinejoin="round"

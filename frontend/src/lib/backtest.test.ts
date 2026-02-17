@@ -259,9 +259,9 @@ describe("createAlertKey", () => {
 	test("generates unique key from alert data", () => {
 		const alert = mockAlert({ user: "user1", alert_time: 123456, volume: 100 });
 		const key = createAlertKey(alert);
-		expect(key).toContain("user1");
-		expect(key).toContain("123456");
-		expect(key).toContain("100");
+		expect(key.startsWith("123456")).toBe(true);
+		expect(key).toContain("000100000000");
+		expect(key).toContain("cond-123");
 	});
 
 	test("different alerts produce different keys", () => {
@@ -315,7 +315,7 @@ describe("filterAlerts", () => {
 	test("returns empty array for no strategies", () => {
 		const alerts = [mockAlert()];
 		const settings = {
-			strategies: [] as const,
+			strategies: [],
 			minPrice: 0.01,
 			maxPrice: 1.0,
 			category: "ALL",
@@ -343,7 +343,7 @@ describe("filterAlerts", () => {
 
 		const filtered = filterAlerts(alerts, settings);
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].price).toBe(0.1);
+		expect(filtered[0]?.price).toBe(0.1);
 	});
 });
 

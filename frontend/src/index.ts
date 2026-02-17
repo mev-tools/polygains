@@ -1,143 +1,80 @@
 import { serve } from "bun";
 import index from "./index.html";
 
-function readEnv(...keys: string[]): string {
-	for (const key of keys) {
-		const value = process.env[key]?.trim();
-		if (value) return value;
-	}
-	throw new Error(`[frontend] Missing required env var: ${keys.join(" or ")}`);
-}
+const API_BASE_URL =
+	process.env.BUN_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4069";
+const PORT = parseInt(process.env.FRONTEND_PORT ?? "4033", 10);
 
-function readPort(...keys: string[]): number {
-	const raw = readEnv(...keys);
-	const port = Number.parseInt(raw, 10);
-	if (!Number.isFinite(port) || port <= 0 || port > 65535) {
-		throw new Error(
-			`[frontend] Invalid port "${raw}" from ${keys.join(" or ")}`,
-		);
-	}
-	return port;
-}
+// Simple API proxy for local development
+async function proxyToApi(req: Request, pathname: string): Promise<Response> {
+	const target = new URL(pathname + new URL(req.url).search, API_BASE_URL);
 
-function normalizeUpstreamBase(raw: string | undefined): string {
-	const value = (raw ?? "").trim();
-	if (!value) {
-		throw new Error(
-			"[frontend] Missing API_UPSTREAM_BASE_URL (or API_BASE_URL / BUN_PUBLIC_API_BASE_URL)",
-		);
-	}
-	if (/^https?:\/\//i.test(value)) return value;
-	return `http://${value}`;
-}
-
-const upstreamBase = normalizeUpstreamBase(
-	process.env.API_UPSTREAM_BASE_URL ??
-		process.env.API_BASE_URL ??
-		process.env.BUN_PUBLIC_API_BASE_URL,
-);
-
-function buildUpstreamUrl(req: Request, upstreamPath: string): string {
-	const requestUrl = new URL(req.url);
-	const baseUrl = new URL(upstreamBase);
-	const normalizedPath = upstreamPath.startsWith("/")
-		? upstreamPath
-		: `/${upstreamPath}`;
-	const basePath =
-		baseUrl.pathname === "/" ? "" : baseUrl.pathname.replace(/\/$/, "");
-
-	const target = new URL(baseUrl.origin);
-	target.pathname = `${basePath}${normalizedPath}`.replace(/\/{2,}/g, "/");
-	target.search = requestUrl.search;
-
-	return target.toString();
-}
-
-async function proxyRequest(
-	req: Request,
-	upstreamPaths: string[],
-): Promise<Response> {
-	let lastError: Error | null = null;
-
-	for (let index = 0; index < upstreamPaths.length; index += 1) {
-		const path = upstreamPaths[index];
-		if (path === undefined) continue;
-		const isLastCandidate = index === upstreamPaths.length - 1;
-
-		try {
-			const targetUrl = buildUpstreamUrl(req, path);
-			const upstreamResponse = await fetch(targetUrl, {
-				method: req.method,
-				headers: {
-					accept: "application/json",
-				},
-			});
-
-			if (upstreamResponse.status === 404 && !isLastCandidate) {
-				continue;
-			}
-
-			return new Response(upstreamResponse.body, {
-				status: upstreamResponse.status,
-				headers: upstreamResponse.headers,
-			});
-		} catch (error) {
-			lastError = error instanceof Error ? error : new Error(String(error));
-			if (isLastCandidate) break;
+	const headers = new Headers();
+	req.headers.forEach((value, key) => {
+		if (!["connection", "keep-alive", "upgrade"].includes(key.toLowerCase())) {
+			headers.set(key, value);
 		}
-	}
+	});
 
-	return Response.json(
-		{
-			error: "upstream_proxy_failed",
-			detail: lastError?.message ?? "Failed to reach upstream API",
-			upstream: upstreamBase,
-		},
-		{ status: 502 },
-	);
+	try {
+		return await fetch(target, {
+			method: req.method,
+			headers,
+			body:
+				req.method !== "GET" && req.method !== "HEAD"
+					? await req.blob()
+					: undefined,
+		});
+	} catch (error) {
+		return Response.json(
+			{ error: "api_unreachable", detail: String(error) },
+			{ status: 502 },
+		);
+	}
 }
 
 const server = serve({
-	hostname: readEnv("FRONTEND_HOST", "HOST"),
-	port: readPort("FRONTEND_PORT"),
+	port: PORT,
 	routes: {
-		"/api/health": (req) => proxyRequest(req, ["/health", "/api/health"]),
-		"/api/stats": (req) => proxyRequest(req, ["/stats", "/api/stats"]),
-		"/api/global-stats": (req) =>
-			proxyRequest(req, ["/global-stats", "/api/global-stats"]),
-		"/api/alerts": (req) => proxyRequest(req, ["/alerts", "/api/alerts"]),
-		"/api/markets": (req) => proxyRequest(req, ["/api/markets", "/markets"]),
-		"/api/top-liquidity-markets": (req) =>
-			proxyRequest(req, [
-				"/api/top-liquidity-markets",
-				"/top-liquidity-markets",
-				"/api/markets",
-				"/markets",
-			]),
-		"/api/market/:conditionId": (req) => {
-			const conditionId = encodeURIComponent(req.params.conditionId);
-			return proxyRequest(req, [
-				`/market/${conditionId}`,
-				`/api/market/${conditionId}`,
-			]);
+		// Static routes first
+		"/": index,
+		"/mainv2": index,
+		"/legacy": index,
+		"/terminal/:id": index,
+		// API routes - must be before catch-all
+		"/health": async (req) => proxyToApi(req, "/health"),
+		"/stats": async (req) => proxyToApi(req, "/stats"),
+		"/global-stats": async (req) => proxyToApi(req, "/global-stats"),
+		"/categories": async (req) => proxyToApi(req, "/categories"),
+		"/markets": async (req) => proxyToApi(req, "/markets"),
+		"/top-liquidity-markets": async (req) =>
+			proxyToApi(req, "/top-liquidity-markets"),
+		"/insiders": async (req) => proxyToApi(req, "/insiders"),
+		"/alerts": async (req) => proxyToApi(req, "/alerts"),
+		"/block": async (req) => proxyToApi(req, "/block"),
+		"/market/:id": async (req) => proxyToApi(req, `/market/${req.params.id}`),
+		"/insider-trades/:id": async (req) =>
+			proxyToApi(req, `/insider-trades/${req.params.id}`),
+		// Catch-all LAST (Bun matches in order, not by specificity)
+		"/api/*": async (req) => {
+			const pathname = new URL(req.url).pathname.replace(/^\/api/, "");
+			return proxyToApi(req, pathname || "/");
 		},
-		"/api/insider-trades/:address": (req) => {
-			const address = encodeURIComponent(req.params.address);
-			return proxyRequest(req, [
-				`/insider-trades/${address}`,
-				`/api/insider-trades/${address}`,
-			]);
+		"/*": async (req) => {
+			// For non-API routes, serve the index (SPA behavior)
+			const pathname = new URL(req.url).pathname;
+			// If it looks like an API path, proxy it
+			if (pathname.startsWith("/")) {
+				return proxyToApi(req, pathname);
+			}
+			return index;
 		},
-
-		// Serve index.html for non-API routes.
-		"/*": index,
 	},
-
-	development: process.env.NODE_ENV !== "production" && {
+	development: {
 		hmr: true,
 		console: true,
 	},
 });
 
 console.log(`🚀 Server running at ${server.url}`);
-console.log(`🔌 API upstream: ${upstreamBase}`);
+console.log(`📡 API proxy: ${API_BASE_URL}`);

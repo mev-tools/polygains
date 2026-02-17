@@ -50,9 +50,13 @@ export function MarketsOverviewStatsPreview({
 	return (
 		<>
 			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-4 mt-8 section-header-min-height flex items-center">
-				MARKETS_OVERVIEW_STATS_PREVIEW
+				MARKET_OVERVIEW
 			</h2>
-			<div className="rounded-box border border-base-content/10 mb-8 p-2 contain-paint relative">
+
+			<div
+			// className="rounded-box border border-base-content/10 mb-8 p-2 contain-paint relative"
+			>
+
 				<div className="relative">
 					<div
 						ref={listShellRef}
@@ -95,7 +99,7 @@ export function MarketsOverviewStatsPreview({
 								{displayMarkets.map((market) => (
 									<section
 										key={`stats-preview-${market.conditionId}`}
-										className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box"
+									// className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box"
 									>
 
 										<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-100 border border-base-content/10 overflow-x-auto">

@@ -1,17 +1,5 @@
-import { Fragment, memo, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useState } from "react";
 import { formatPnL } from "../../lib/backtest";
-import type { AlertRowView } from "../../types/api";
-import type {
-	AlertsSectionProps,
-	BannerProps,
-	DetectionSectionProps,
-	GlobalStatsSectionProps,
-	HeaderProps,
-	LiveTrackerCardsProps,
-	LiveTrackerControlsProps,
-	MarketsSectionProps,
-	TerminalIntroProps,
-} from "../../types/terminal";
 import {
 	BANNER_ASCII,
 	formatLargeNumber,
@@ -21,9 +9,21 @@ import {
 	hasAllStats,
 	NO_ALERTS_ASCII,
 	renderMarketPrice,
-	timeAgo,
 	TOP_LOGO_ASCII,
+	timeAgo,
 } from "../../lib/terminal";
+import type {
+	AlertsSectionProps,
+	BannerProps,
+	CategoryOption,
+	DetectionSectionProps,
+	GlobalStatsSectionProps,
+	HeaderProps,
+	LiveTrackerCardsProps,
+	LiveTrackerControlsProps,
+	MarketsSectionProps,
+	TerminalIntroProps,
+} from "../../types/terminal";
 
 export function TerminalHeader({
 	currentBlock,
@@ -38,7 +38,9 @@ export function TerminalHeader({
 				</pre>
 			</div>
 			<div className="flex-none flex flex-col items-end gap-1 text-[10px] md:text-xs font-mono px-2">
-				<div className="text-base-content/70 whitespace-nowrap">BLOCK: {currentBlock}</div>
+				<div className="text-base-content/70 whitespace-nowrap">
+					BLOCK: {currentBlock}
+				</div>
 				<div
 					className={`font-bold whitespace-nowrap ${syncHealthy ? "text-accent" : "text-error"}`}
 				>
@@ -194,7 +196,10 @@ export function LiveTrackerControls({
 									disabled={disabled}
 									checked={selectedStrategies.includes("follow_insider")}
 									onChange={(event) =>
-										onStrategyChange("follow_insider", event.currentTarget.checked)
+										onStrategyChange(
+											"follow_insider",
+											event.currentTarget.checked,
+										)
 									}
 								/>
 								<span className="label-text text-[10px] text-base-content/80">
@@ -208,7 +213,10 @@ export function LiveTrackerControls({
 									disabled={disabled}
 									checked={selectedStrategies.includes("reverse_insider")}
 									onChange={(event) =>
-										onStrategyChange("reverse_insider", event.currentTarget.checked)
+										onStrategyChange(
+											"reverse_insider",
+											event.currentTarget.checked,
+										)
 									}
 								/>
 								<span className="label-text text-[10px] text-base-content/80">
@@ -228,7 +236,9 @@ export function LiveTrackerControls({
 										onSideToggle("YES", event.currentTarget.checked)
 									}
 								/>
-								<span className="label-text text-[10px] text-base-content/80">YES</span>
+								<span className="label-text text-[10px] text-base-content/80">
+									YES
+								</span>
 							</label>
 							<label className="cursor-pointer label p-0 gap-2 whitespace-nowrap">
 								<input
@@ -240,7 +250,9 @@ export function LiveTrackerControls({
 										onSideToggle("NO", event.currentTarget.checked)
 									}
 								/>
-								<span className="label-text text-[10px] text-base-content/80">NO</span>
+								<span className="label-text text-[10px] text-base-content/80">
+									NO
+								</span>
 							</label>
 						</div>
 					</div>
@@ -345,6 +357,89 @@ function NoAlertsAscii() {
 	);
 }
 
+// Main category filter with ALL, CRYPTO, SPORTS, POLITICS + "..." daisyUI dropdown
+function CategoryFilter({
+	categories,
+	selectedCategory,
+	onCategoryChange,
+}: {
+	categories: CategoryOption[];
+	selectedCategory: string;
+	onCategoryChange: (value: string) => void;
+}) {
+	// Main categories to always show
+	const mainCategoryNames = ["ALL", "CRYPTO", "SPORTS", "POLITICS"];
+
+	// Separate main categories and "more" categories
+	const mainCategories = mainCategoryNames
+		.map((name) => categories.find((c) => c.name === name))
+		.filter(Boolean) as CategoryOption[];
+
+	const moreCategories = categories.filter(
+		(c) => !mainCategoryNames.includes(c.name),
+	);
+
+	// Check if selected category is in "more" - if so, show it as the "..." label
+	const selectedInMore = moreCategories.find((c) => c.name === selectedCategory);
+	const moreButtonLabel = selectedInMore ? selectedInMore.displayName : "...";
+	const isMoreSelected = Boolean(selectedInMore);
+
+	return (
+		<div className="flex items-center gap-1">
+			{/* Main category buttons */}
+			{mainCategories.map((category) => (
+				<button
+					key={category.name}
+					type="button"
+					className={`btn btn-sm min-h-[40px] whitespace-nowrap ${category.name === selectedCategory
+						? "btn-primary"
+						: "btn-ghost"
+						}`}
+					onClick={() => onCategoryChange(category.name)}
+					aria-label={`Filter alerts by ${category.displayName}`}
+					aria-pressed={category.name === selectedCategory}
+					title={`${category.displayName}${category.count > 0 ? ` (${category.count} markets)` : ""}`}
+				>
+					{category.displayName}
+				</button>
+			))}
+
+			{/* "..." More button - always visible; disabled until backend categories load */}
+			<div className="dropdown dropdown-end">
+				<div
+					tabIndex={moreCategories.length > 0 ? 0 : -1}
+					role="button"
+					className={`btn btn-sm min-h-[40px] min-w-[40px] ${isMoreSelected ? "btn-primary" : "btn-ghost"} ${moreCategories.length === 0 ? "btn-disabled opacity-40" : ""}`}
+					aria-label="More categories"
+					title="More categories"
+				>
+					{moreButtonLabel}
+				</div>
+				{moreCategories.length > 0 && (
+					<ul tabIndex={0} className="menu dropdown-content bg-base-200 rounded-box z-50 mt-1 w-52 p-2 shadow-xl">
+						{moreCategories.map((category) => (
+							<li key={category.name}>
+								<a
+									className={category.name === selectedCategory ? "active" : ""}
+									onClick={() => {
+										onCategoryChange(category.name);
+										(document.activeElement as HTMLElement)?.blur();
+									}}
+								>
+									{category.displayName}
+									{category.count > 0 && (
+										<span className="badge badge-sm badge-ghost">{category.count}</span>
+									)}
+								</a>
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
+		</div>
+	);
+}
+
 const AlertsSectionComponent = ({
 	rows,
 	pagination,
@@ -364,25 +459,15 @@ const AlertsSectionComponent = ({
 					RECENT_POLYGAINS_ALERTS
 				</h2>
 				<div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-					{/* Category buttons with horizontal scroll */}
-					<div className="w-full sm:w-auto overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0">
-						<div className="join flex-nowrap">
-							{categoryOptions.map((category) => (
-								<button
-									key={category}
-									type="button"
-									className={`join-item btn btn-sm min-h-[40px] whitespace-nowrap ${category === selectedCategory ? "btn-primary" : "btn-ghost"}`}
-									onClick={() => onCategoryChange(category)}
-									aria-label={`Filter alerts by ${category}`}
-									aria-pressed={category === selectedCategory}
-									title={`Filter alerts by ${category}`}
-								>
-									<span className="truncate max-w-[120px] inline-block">{category}</span>
-								</button>
-							))}
-						</div>
+					{/* Category filter with main 4 + ... menu */}
+					<div className="w-full sm:w-auto overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 no-scrollbar">
+						<CategoryFilter
+							categories={categoryOptions}
+							selectedCategory={selectedCategory}
+							onCategoryChange={onCategoryChange}
+						/>
 					</div>
-					<div className="join shrink-0">
+					{/* disable for now! <div className="join shrink-0">
 						{(["BOTH", "WINNERS", "LOSERS"] as const).map((filter) => (
 							<button
 								key={filter}
@@ -396,7 +481,7 @@ const AlertsSectionComponent = ({
 								{filter}
 							</button>
 						))}
-					</div>
+					</div> */}
 				</div>
 			</div>
 
@@ -451,9 +536,8 @@ const AlertsSectionComponent = ({
 								return (
 									<Fragment key={row.rowId}>
 										<tr
-											className={`table-row-optimized border-b border-base-content/5 ${
-												index % 2 === 1 ? "bg-white/5" : "bg-transparent"
-											}`}
+											className={`table-row-optimized border-b border-base-content/5 ${index % 2 === 1 ? "bg-white/5" : "bg-transparent"
+												}`}
 										>
 											<td className="max-w-[300px]">
 												<div
@@ -469,13 +553,12 @@ const AlertsSectionComponent = ({
 											<td>
 												<div className="flex items-center gap-2">
 													<span
-														className={`badge badge-sm font-bold border-none rounded-sm px-2 py-0.5 text-[10px] uppercase ${
-															isYes
-																? "bg-success/20 text-success"
-																: row.outcomeLabel === "NO"
-																	? "bg-error/20 text-error"
-																	: "bg-base-content/20 text-base-content"
-														}`}
+														className={`badge badge-sm font-bold border-none rounded-sm px-2 py-0.5 text-[10px] uppercase ${isYes
+															? "bg-success/20 text-success"
+															: row.outcomeLabel === "NO"
+																? "bg-error/20 text-error"
+																: "bg-base-content/20 text-base-content"
+															}`}
 													>
 														{row.outcomeLabel}
 													</span>
@@ -524,248 +607,12 @@ const AlertsSectionComponent = ({
 										</tr>
 									</Fragment>
 								);
-								})
-							)}
-						</tbody>
-					</table>
+							})
+						)}
+					</tbody>
+				</table>
 
-					<div className="flex justify-between items-center p-4 border-t border-base-content/10 bg-base-200">
-						<button
-							type="button"
-							className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
-							onClick={onPrev}
-							disabled={isLoading || !pagination.hasPrev}
-							aria-label="Previous page"
-						>
-							{isLoading ? (
-								<span
-									className="loading loading-spinner loading-xs loading-optimized"
-									aria-hidden="true"
-								/>
-							) : (
-								"← PREV"
-							)}
-						</button>
-						<span className="text-xs font-mono text-base-content/70 flex items-center gap-2">
-							{isLoading && <span className="loading loading-dots loading-xs" />}
-							Page {pagination.page} of {pagination.totalPages} (
-							{pagination.total} total)
-						</span>
-						<button
-							type="button"
-							className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
-							onClick={onNext}
-							disabled={isLoading || !pagination.hasNext}
-							aria-label="Next page"
-						>
-							{isLoading ? (
-								<span
-									className="loading loading-spinner loading-xs loading-optimized"
-									aria-hidden="true"
-								/>
-							) : (
-								"NEXT →"
-							)}
-						</button>
-					</div>
-				</div>
-		</>
-	);
-};
-
-export const AlertsSection = memo(AlertsSectionComponent, (prev, next) => {
-	if (prev.isLoading !== next.isLoading) return false;
-	if (prev.selectedCategory !== next.selectedCategory) return false;
-	if (prev.selectedWinnerFilter !== next.selectedWinnerFilter) return false;
-	if (JSON.stringify(prev.pagination) !== JSON.stringify(next.pagination))
-		return false;
-	if (
-		JSON.stringify(prev.categoryOptions) !==
-		JSON.stringify(next.categoryOptions)
-	)
-		return false;
-	return JSON.stringify(prev.rows) === JSON.stringify(next.rows);
-});
-
-export function DetectionSection({
-	totalInsiders,
-	yesInsiders,
-	noInsiders,
-	insiderVolume,
-}: DetectionSectionProps) {
-	return (
-		<>
-			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-2 mt-4 section-header-min-height flex items-center">
-				POLYGAINS_DETECTION
-			</h2>
-			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
-				<div className="stat">
-					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
-						Total
-					</div>
-					<div className="stat-value text-accent text-xl">{totalInsiders}</div>
-				</div>
-				<div className="stat">
-					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
-						YES
-					</div>
-					<div className="stat-value text-accent text-xl">{yesInsiders}</div>
-				</div>
-				<div className="stat">
-					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
-						NO
-					</div>
-					<div className="stat-value text-error text-xl">{noInsiders}</div>
-				</div>
-				<div className="stat">
-					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
-						Volume
-					</div>
-					<div className="stat-value text-base-content text-xl">
-						{insiderVolume}
-					</div>
-				</div>
-			</div>
-		</>
-	);
-}
-
-export function MarketsSection({
-	markets,
-	pagination,
-	isLoading = false,
-	marketStatsLoadingByCondition = {},
-	onPrev,
-	onNext,
-}: MarketsSectionProps) {
-	return (
-		<>
-			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-4 mt-8 section-header-min-height flex items-center">
-				TOP_LIQUIDITY_MARKETS
-			</h2>
-			<div className="rounded-box border border-base-content/10 mb-8 p-2 markets-table-container contain-paint">
-				{isLoading ? (
-					<div className="flex flex-col gap-4">
-						{[...Array(5)].map((_, i) => (
-							<div
-								key={`market-skel-${i}`}
-								className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box"
-							>
-								<div className="skeleton h-5 w-full max-w-[600px] mb-3" />
-								<div className="w-full rounded-lg border border-base-content/5 bg-base-100/50 p-2">
-									<div className="skeleton h-4 w-full mb-2" />
-									<div className="skeleton h-4 w-full" />
-								</div>
-							</div>
-						))}
-					</div>
-				) : markets.length === 0 ? (
-					<div className="p-8 text-center text-base-content/70 min-h-[200px] flex items-center justify-center">
-						No markets found
-					</div>
-				) : (
-					<div className="flex flex-col gap-4">
-						{markets.map((market) => (
-							<section
-								key={market.conditionId}
-								className="card bg-base-300/30 border border-base-content/5 p-4 rounded-box card-optimized"
-							>
-								<h3
-									className="text-sm font-bold text-base-content mb-3 line-clamp-2"
-									title={market.question}
-								>
-									{market.question}
-								</h3>
-								<div className="w-full rounded-lg border border-base-content/5 bg-base-100/50 overflow-x-auto scrollbar-thin">
-									<table className="table table-xs w-full table-fixed min-w-[700px] md:min-w-full">
-										<thead>
-											<tr className="bg-base-200 text-base-content/70 uppercase">
-												<th className="w-[12%] md:w-[15%]">Outcome</th>
-												<th className="hidden md:table-cell md:w-[12%]">Trades</th>
-												<th className="hidden md:table-cell md:w-[15%]">Insider Trades</th>
-												<th className="w-[18%] md:w-[15%]">Volume</th>
-												<th className="w-[20%] md:w-[15%]">Current Odds</th>
-												<th className="w-[50%] md:w-[28%]">
-													<div className="flex items-center gap-1">
-														<span>Market Stats (ø / std / P95)</span>
-													</div>
-												</th>
-											</tr>
-										</thead>
-										<tbody>
-											{market.outcomes.map((outcome, index) => {
-												const outcomeMeta = getOutcomeMeta(outcome.outcome);
-												const statsLoading = Boolean(
-													marketStatsLoadingByCondition[market.conditionId],
-												);
-												const totalTrades = Number(outcome.total_trades || 0);
-												const insiderTradeCount = Number(
-													outcome.insider_trade_count || 0,
-												);
-												const noTradeData = totalTrades <= 0;
-												const missingStats = !hasAllStats(outcome);
-												return (
-													<tr
-														key={`${market.conditionId}-${String(outcome.outcome)}`}
-														className={index % 2 === 1 ? "bg-base-200/50" : ""}
-													>
-														<td>
-															<span
-																className={`badge badge-sm font-bold border rounded-sm px-2 py-0.5 text-[10px] uppercase ${outcomeMeta.toneClass}`}
-															>
-																{outcomeMeta.label}
-															</span>
-														</td>
-														<td className="hidden md:table-cell font-mono tabular-nums text-base-content/90">
-															{totalTrades.toLocaleString()}
-														</td>
-														<td className="hidden md:table-cell font-mono tabular-nums text-base-content/90">
-															{insiderTradeCount.toLocaleString()}
-														</td>
-														<td className="font-mono tabular-nums text-base-content/90">
-															$
-															{Number(outcome.volume || 0).toLocaleString(
-																undefined,
-																{
-																	minimumFractionDigits: 0,
-																	maximumFractionDigits: 0,
-																},
-															)}
-														</td>
-														<td className="font-mono font-bold text-accent">
-															{renderMarketPrice(
-																Number(outcome.last_price || 0),
-																Boolean(market.closed || outcome.closed),
-															)}
-														</td>
-														<td className="font-mono text-base-content/80 text-[10px] whitespace-nowrap">
-															{noTradeData ? (
-																<span className="text-base-content/60">
-																	no trade data
-																</span>
-															) : missingStats && statsLoading ? (
-																<span className="flex items-center gap-1 opacity-70">
-																	<span
-																		className="loading loading-spinner loading-xs loading-optimized"
-																		aria-hidden="true"
-																	/>
-																	loading...
-																</span>
-															) : (
-																`${formatMarketStat(outcome.mean)} / ${formatMarketStat(outcome.stdDev)} / ${formatMarketStat(outcome.p95)}`
-															)}
-														</td>
-													</tr>
-												);
-											})}
-										</tbody>
-									</table>
-								</div>
-							</section>
-						))}
-					</div>
-				)}
-				<div className="flex justify-between items-center p-2 mt-2 border-t border-base-content/10">
+				<div className="flex justify-between items-center p-4 border-t border-base-content/10 bg-base-200">
 					<button
 						type="button"
 						className="btn btn-sm btn-ghost min-w-[48px] min-h-[44px]"
@@ -807,7 +654,69 @@ export function MarketsSection({
 			</div>
 		</>
 	);
+};
+
+export const AlertsSection = React.memo(
+	AlertsSectionComponent,
+	(prev: AlertsSectionProps, next: AlertsSectionProps) => {
+		if (prev.isLoading !== next.isLoading) return false;
+		if (prev.selectedCategory !== next.selectedCategory) return false;
+		if (prev.selectedWinnerFilter !== next.selectedWinnerFilter) return false;
+		if (JSON.stringify(prev.pagination) !== JSON.stringify(next.pagination))
+			return false;
+		if (
+			JSON.stringify(prev.categoryOptions) !==
+			JSON.stringify(next.categoryOptions)
+		)
+			return false;
+		return JSON.stringify(prev.rows) === JSON.stringify(next.rows);
+	},
+);
+
+export function DetectionSection({
+	totalInsiders,
+	yesInsiders,
+	noInsiders,
+	insiderVolume,
+}: DetectionSectionProps) {
+	return (
+		<>
+			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-2 mt-4 section-header-min-height flex items-center">
+				UNUSUAL_STATS
+			</h2>
+			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
+				<div className="stat">
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
+						Total
+					</div>
+					<div className="stat-value text-accent text-xl">{totalInsiders}</div>
+				</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
+						YES
+					</div>
+					<div className="stat-value text-accent text-xl">{yesInsiders}</div>
+				</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
+						NO
+					</div>
+					<div className="stat-value text-error text-xl">{noInsiders}</div>
+				</div>
+				<div className="stat">
+					<div className="stat-title text-base-content/70 uppercase text-xs font-bold">
+						Volume
+					</div>
+					<div className="stat-value text-base-content text-xl">
+						{insiderVolume}
+					</div>
+				</div>
+			</div>
+		</>
+	);
 }
+
+
 
 export function GlobalStatsSection({
 	accounts,

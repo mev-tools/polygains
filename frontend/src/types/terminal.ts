@@ -1,25 +1,31 @@
 import type {
 	AlertItem as SharedAlertItem,
-	AlertsResponse as SharedAlertsResponse,
 	GlobalStats as SharedGlobalStats,
 	HealthResponse as SharedHealthResponse,
 	InsiderStats as SharedInsiderStats,
 	InsiderTrade as SharedInsiderTrade,
 	MarketOutcome as SharedMarketOutcome,
-	MarketsResponse as SharedMarketsResponse,
 	Pagination as SharedPagination,
 } from "@shared/api";
 import type { AlertRowView } from "./api";
 
 export type Pagination = SharedPagination;
-export type AlertsResponse = SharedAlertsResponse;
-export type MarketsResponse = SharedMarketsResponse;
 export type HealthResponse = SharedHealthResponse;
 export type InsiderStats = SharedInsiderStats;
 export type GlobalStats = SharedGlobalStats;
 export type AlertItem = SharedAlertItem;
 export type InsiderTrade = SharedInsiderTrade;
 export type MarketOutcome = SharedMarketOutcome;
+
+export interface AlertsResponse {
+	data: AlertItem[];
+	pagination: Pagination;
+}
+
+export interface MarketsResponse {
+	data: MarketOutcome[];
+	pagination: Pagination;
+}
 
 export interface GroupedMarket {
 	conditionId: string;
@@ -137,12 +143,19 @@ export interface LiveTrackerCardsProps {
 	onRunBacktest: () => void;
 }
 
+export interface CategoryOption {
+	name: string;
+	count: number;
+	enabled: boolean;
+	displayName: string;
+}
+
 export interface AlertsSectionProps {
 	rows: AlertRowView[];
 	pagination: Pagination;
 	selectedCategory: string;
 	selectedWinnerFilter: "BOTH" | "WINNERS" | "LOSERS";
-	categoryOptions: string[];
+	categoryOptions: CategoryOption[];
 	isLoading?: boolean;
 	onPrev: () => void;
 	onNext: () => void;

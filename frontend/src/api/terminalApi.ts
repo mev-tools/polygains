@@ -17,6 +17,11 @@ const DEFAULT_PAGINATION: Pagination = {
 	hasNext: false,
 };
 
+export interface PaginatedResult<T> {
+	data: T[];
+	pagination: Pagination;
+}
+
 function getConfiguredApiBase(): string {
 	const envBase =
 		(typeof process !== "undefined"
@@ -26,8 +31,13 @@ function getConfiguredApiBase(): string {
 
 	if (typeof window !== "undefined" && window.location?.hostname) {
 		const hostname = window.location.hostname;
-		if (hostname === "polygains.com" || hostname === "www.polygains.com") {
+		// Production domains use api.polygains.com
+		if (hostname === "polygains.com" || hostname === "www.polygains.com" || hostname === "staging.polygains.com") {
 			return "https://api.polygains.com";
+		}
+		// Local dev server (port 4033) should call API on port 4069
+		if (hostname === "localhost" || hostname === "127.0.0.1") {
+			return "http://127.0.0.1:4069";
 		}
 	}
 
@@ -109,7 +119,7 @@ function normalizePagination(raw: unknown): Pagination {
 
 export async function fetchHealth(): Promise<HealthResponse> {
 	try {
-		return await getJson<HealthResponse>("/api/health");
+		return await getJson<HealthResponse>("/health");
 	} catch {
 		return { status: "error", current_block: 0 };
 	}
@@ -117,7 +127,7 @@ export async function fetchHealth(): Promise<HealthResponse> {
 
 export async function fetchInsiderStats(): Promise<InsiderStats> {
 	try {
-		return await getJson<InsiderStats>("/api/stats");
+		return await getJson<InsiderStats>("/stats");
 	} catch {
 		return {
 			total_insiders: 0,
@@ -131,7 +141,7 @@ export async function fetchInsiderStats(): Promise<InsiderStats> {
 
 export async function fetchGlobalStats(): Promise<GlobalStats> {
 	try {
-		return await getJson<GlobalStats>("/api/global-stats");
+		return await getJson<GlobalStats>("/global-stats");
 	} catch {
 		return {
 			total_accounts: 0,
@@ -142,12 +152,41 @@ export async function fetchGlobalStats(): Promise<GlobalStats> {
 	}
 }
 
+export interface CategoryCount {
+	name: string;
+	count: number;
+	enabled: boolean;
+	group?: string;
+	displayName?: string;
+}
+
 export async function fetchCategories(): Promise<string[]> {
 	try {
-		const payload = await getJson<string[]>("/api/categories");
+		const payload = await getJson<string[]>("/categories");
 		return Array.isArray(payload) ? payload : ["ALL"];
 	} catch {
 		return ["ALL"];
+	}
+}
+
+// Default fallback categories when API fails
+const FALLBACK_CATEGORIES: CategoryCount[] = [
+	{ name: "ALL", count: 0, enabled: true },
+	{ name: "CRYPTO", count: 0, enabled: true },
+	{ name: "SPORTS", count: 0, enabled: true },
+	{ name: "POLITICS", count: 0, enabled: true },
+];
+
+export async function fetchCategoriesWithCounts(): Promise<CategoryCount[]> {
+	try {
+		const payload = await getJson<CategoryCount[]>("/categories-with-counts");
+		if (Array.isArray(payload) && payload.length > 0) {
+			return payload;
+		}
+		return FALLBACK_CATEGORIES;
+	} catch (err) {
+		console.warn("Failed to fetch categories with counts, using fallback:", err);
+		return FALLBACK_CATEGORIES;
 	}
 }
 
@@ -156,7 +195,7 @@ export async function fetchAlerts(
 	limit = 10,
 	category?: string,
 ): Promise<AlertsResponse> {
-	const payload = await getJson<unknown>("/api/alerts", {
+	const payload = await getJson<unknown>("/alerts", {
 		page,
 		limit,
 		category,
@@ -182,13 +221,78 @@ export async function fetchAlerts(
 export async function fetchInsiderTrades(
 	address: string,
 ): Promise<InsiderTrade[]> {
+	const payload = await fetchInsiderTradesPage(address, 1, 100);
+	return payload.data;
+}
+
+export async function fetchInsiders(
+	page = 1,
+	limit = 10,
+): Promise<PaginatedResult<Record<string, unknown>>> {
+	const payload = await getJson<unknown>("/insiders", { page, limit });
+
+	if (Array.isArray(payload)) {
+		return {
+			data: payload as Record<string, unknown>[],
+			pagination: {
+				...DEFAULT_PAGINATION,
+				page,
+				limit,
+				total: payload.length,
+				totalPages: 1,
+			},
+		};
+	}
+
+	const structured = payload as Partial<PaginatedResult<Record<string, unknown>>>;
+	return {
+		data: Array.isArray(structured.data)
+			? (structured.data as Record<string, unknown>[])
+			: [],
+		pagination: normalizePagination(structured.pagination),
+	};
+}
+
+export async function fetchInsiderTradesPage(
+	address: string,
+	page = 1,
+	limit = 10,
+): Promise<PaginatedResult<InsiderTrade>> {
 	try {
 		const payload = await getJson<unknown>(
-			`/api/insider-trades/${encodeURIComponent(address)}`,
+			`/insider-trades/${encodeURIComponent(address)}`,
+			{ page, limit },
 		);
-		return Array.isArray(payload) ? (payload as InsiderTrade[]) : [];
+
+		if (Array.isArray(payload)) {
+			return {
+				data: payload as InsiderTrade[],
+				pagination: {
+					...DEFAULT_PAGINATION,
+					page,
+					limit,
+					total: payload.length,
+					totalPages: 1,
+				},
+			};
+		}
+
+		const structured = payload as Partial<PaginatedResult<InsiderTrade>>;
+		return {
+			data: Array.isArray(structured.data)
+				? (structured.data as InsiderTrade[])
+				: [],
+			pagination: normalizePagination(structured.pagination),
+		};
 	} catch {
-		return [];
+		return {
+			data: [],
+			pagination: {
+				...DEFAULT_PAGINATION,
+				page,
+				limit,
+			},
+		};
 	}
 }
 
@@ -197,7 +301,7 @@ export async function fetchMarkets(
 	limit = 10,
 	close?: boolean,
 ): Promise<MarketsResponse> {
-	const payload = await getJson<unknown>("/api/markets", {
+	const payload = await getJson<unknown>("/markets", {
 		page,
 		limit,
 		close,
@@ -226,7 +330,7 @@ export async function fetchTopLiquidityMarkets(
 	close?: boolean,
 ): Promise<MarketsResponse> {
 	try {
-		const payload = await getJson<unknown>("/api/top-liquidity-markets", {
+		const payload = await getJson<unknown>("/top-liquidity-markets", {
 			page,
 			limit,
 			close,
@@ -257,7 +361,7 @@ export async function fetchMarket(
 ): Promise<Record<string, unknown> | null> {
 	try {
 		return await getJson<Record<string, unknown>>(
-			`/api/market/${encodeURIComponent(conditionId)}`,
+			`/market/${encodeURIComponent(conditionId)}`,
 		);
 	} catch {
 		return null;

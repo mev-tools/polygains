@@ -16,6 +16,7 @@
 		"preact": "^10.28.3",
 		"react": "npm:@preact/compat",
 		"react-dom": "npm:@preact/compat",
+		"swr": "^2.4.0",
 		"tailwindcss": "^4.1.11"
 	},
 	"devDependencies": {

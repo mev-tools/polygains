@@ -207,8 +207,15 @@ export function didStrategyWin(
 }
 
 export function createAlertKey(alert: AlertItem): string {
-	// Include more fields to prevent collisions
-	return `${alert.user}-${alert.alert_time}-${String(alert.outcome)}-${alert.conditionId ?? ""}-${alert.tokenId ?? ""}-${alert.volume}-${alert.price}`;
+	const alertTime = Number.isFinite(Number(alert.alert_time))
+		? Math.max(0, Math.floor(Number(alert.alert_time)))
+		: 0;
+	const scaledVolume = Number.isFinite(Number(alert.volume))
+		? Math.max(0, Math.round(Number(alert.volume) * 1_000_000))
+		: 0;
+	const paddedVolume = String(scaledVolume).padStart(12, "0");
+	const baseId = `${alertTime}${paddedVolume}`;
+	return `${baseId}:${alert.conditionId ?? ""}:${alert.tokenId ?? ""}:${String(alert.outcome ?? "")}`;
 }
 
 export function createTradeId(mode: StrategyMode, alertKey: string): string {
@@ -366,7 +373,8 @@ export function processTrade(
 	if (state.processed.has(tradeId)) {
 		// Check if pending and now can be settled
 		if (state.pending.has(tradeId) && alert.closed) {
-			const pending = state.pending.get(tradeId)!;
+			const pending = state.pending.get(tradeId);
+			if (!pending) return state;
 			const winner = resolveClosedAlertWinner(
 				alert.winner,
 				alert.market_price ?? alert.price,

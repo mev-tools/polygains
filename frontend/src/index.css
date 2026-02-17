@@ -2,181 +2,71 @@
 @plugin "daisyui";
 
 @plugin "daisyui/theme" {
-  name: "terminal";
-  default: true;
-  prefersdark: true;
-  color-scheme: "dark";
+	name: "alert";
+	default: false;
+	prefersdark: true;
+	color-scheme: "dark";
 
-  --color-base-100: #0a0a0c;
-  --color-base-200: #141417;
-  --color-base-300: #1d232a;
-  --color-base-content: #e1e1e6;
+	--color-base-100: oklch(20% 0.01 240);
+	--color-base-200: oklch(15% 0.02 240);
+	--color-base-300: oklch(25% 0.02 240);
+	--color-base-content: oklch(90% 0.01 240);
 
-  --color-primary: #10b981;
-  --color-primary-content: #000000;
+	--color-info: #3b82f6;
+	--color-info-content: #ffffff;
 
-  --color-secondary: #2a3038;
-  --color-secondary-content: #e1e1e6;
-
-  --color-accent: #10b981;
-  --color-accent-content: #000000;
-
-  --color-neutral: #2d2d33;
-  --color-neutral-content: #888891;
-
-  --color-info: #3b82f6;
-  --color-info-content: #ffffff;
-
-  --color-success: #10b981;
-  --color-success-content: #ffffff;
-
-  --color-warning: #f59e0b;
-  --color-warning-content: #000000;
-
-  --color-error: #ef4444;
-  --color-error-content: #ffffff;
-
-  --radius-selector: 0px;
-  --radius-field: 0.25rem;
-  --radius-box: 0.25rem;
-
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
+	--radius-box: 0.5rem;
 }
+
+@plugin "daisyui/theme" {
+	name: "terminal";
+	default: true;
+	prefersdark: true;
+	color-scheme: "dark";
+
+	--color-base-100: #0a0a0c;
+	--color-base-200: #141417;
+	--color-base-300: #1d232a;
+	--color-base-content: #e1e1e6;
+
+	--color-primary: #10b981;
+	--color-primary-content: #000000;
+
+	--color-secondary: #2a3038;
+	--color-secondary-content: #e1e1e6;
+
+	--color-accent: #10b981;
+	--color-accent-content: #000000;
+
+	--color-neutral: #2d2d33;
+	--color-neutral-content: #888891;
+
+	--color-info: #3b82f6;
+	--color-info-content: #ffffff;
+
+	--color-success: #10b981;
+	--color-success-content: #ffffff;
+
+	--color-warning: #f59e0b;
+	--color-warning-content: #000000;
+
+	--color-error: #ef4444;
+	--color-error-content: #ffffff;
+
+	--radius-selector: 0px;
+	--radius-field: 0.25rem;
+	--radius-box: 0.25rem;
+
+	--size-selector: 0.25rem;
+	--size-field: 0.25rem;
+
+	--border: 1px;
+	--depth: 0;
+	--noise: 0;
+}
+
 
 /* Custom Utilities for Terminal Look */
 .font-mono {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
-}
-
-/* Prevent layout shifts - reserve space for tables before content loads */
-.table-container-min-height {
-  min-height: 400px;
-}
-
-/* Alerts table container - fixed height to prevent CLS */
-.alerts-table-container {
-  min-height: 560px;
-}
-
-/* Alerts table body - reserve space for 10 rows + header */
-.alerts-tbody-min-height {
-  min-height: 440px;
-}
-
-/* Markets table container - fixed height to prevent CLS */
-.markets-table-container {
-  min-height: 700px;
-}
-
-/* Intro section stable height */
-.intro-container-min-height {
-  min-height: 120px;
-}
-
-/* Header logo stable height */
-.header-logo-min-height {
-  min-height: 140px;
-}
-
-/* Filter bar stable height */
-.filter-bar-min-height {
-  min-height: 48px;
-}
-
-/* Section header stable height */
-.section-header-min-height {
-  min-height: 32px;
-}
-
-/* Fixed table layout prevents column width shifts */
-.table-fixed {
-  table-layout: fixed;
-}
-
-/* Optimize font rendering */
-html {
-  font-display: swap;
-}
-
-/* ============================================
-   PERFORMANCE OPTIMIZATIONS
-   ============================================ */
-
-/* GPU acceleration for animated elements */
-.gpu-accelerated {
-  transform: translateZ(0);
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-}
-
-/* Reduce animation CPU cost - use transform only */
-.animate-optimized {
-  will-change: transform, opacity;
-}
-
-/* Content visibility for off-screen sections */
-.content-visibility-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 500px;
-}
-
-/* CSS containment for isolated components - prevents layout recalculation */
-.contain-layout {
-  contain: layout;
-}
-
-.contain-paint {
-  contain: paint;
-}
-
-.contain-strict {
-  contain: strict;
-}
-
-/* Table row optimization - prevent style recalculation */
-.table-row-optimized {
-  contain: layout style;
-}
-
-/* Optimize pulse animation to use transform instead of opacity */
-@keyframes pulse-gpu {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse-gpu {
-  animation: pulse-gpu 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  will-change: opacity;
-}
-
-/* Optimize spinner animations */
-.loading-optimized {
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* Reduce paint areas for scrolling containers */
-.scroll-container-optimized {
-  overflow: auto;
-  contain: paint layout;
-}
-
-/* Card component optimization */
-.card-optimized {
-  contain: layout style paint;
-  content-visibility: auto;
-}
-
-/* Stats grid optimization */
-.stats-optimized {
-  contain: layout style;
+	font-family: "JetBrains Mono", "Fira Code", monospace;
 }

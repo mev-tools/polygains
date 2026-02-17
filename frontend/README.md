@@ -24,7 +24,7 @@ The dev server runs on `http://localhost:3000` by default.
 
 ### API Proxy
 
-Frontend requests to `/api/*` are proxied to the backend server:
+Frontend requests to `api/*` are proxied to the backend server:
 
 ```bash
 # Set upstream API URL

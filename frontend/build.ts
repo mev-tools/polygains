@@ -11,9 +11,9 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
 Usage: bun run build.ts [options]
 
 Common Options:
-  --outdir <path>          Output directory (default: "dist")
+  --outdir <path>          Output directory (default: "../public/dist")
   --minify                 Enable minification (or --minify.whitespace, --minify.syntax, etc)
-  --sourcemap <type>      Sourcemap type: none|linked|inline|external
+  --sourcemap <type>       Sourcemap type: none|linked|inline|external
   --target <target>        Build target: browser|bun|node
   --format <format>        Output format: esm|cjs|iife
   --splitting              Enable code splitting
@@ -28,7 +28,7 @@ Common Options:
   --help, -h               Show this help message
 
 Example:
-  bun run build.ts --outdir=dist --minify --sourcemap=linked --external=react,react-dom
+  bun run build.ts --minify --sourcemap=linked
 `);
 	process.exit(0);
 }
@@ -39,12 +39,9 @@ const toCamelCase = (str: string): string =>
 const parseValue = (value: string): string | boolean | number | string[] => {
 	if (value === "true") return true;
 	if (value === "false") return false;
-
 	if (/^\d+$/.test(value)) return parseInt(value, 10);
 	if (/^\d*\.\d+$/.test(value)) return parseFloat(value);
-
 	if (value.includes(",")) return value.split(",").map((v) => v.trim());
-
 	return value;
 };
 
@@ -86,16 +83,15 @@ function parseArgs(): Partial<Bun.BuildConfig> {
 
 		if (key.includes(".")) {
 			const parts = key.split(".");
-			if (parts.length !== 2) {
+			if (parts.length > 2) {
 				console.warn(
-					`Warning: Nested option "${key}" is not supported. Only single-level nesting (e.g., --minify.whitespace) is allowed.`,
+					`Warning: Deeply nested option "${key}" is not supported. Only single-level nesting (e.g., --minify.whitespace) is allowed.`,
 				);
 				continue;
 			}
 			const parentKey = parts[0];
 			const childKey = parts[1];
-			if (parentKey === undefined || childKey === undefined) continue;
-
+			if (!parentKey || !childKey) continue;
 			const existing = config[parentKey];
 			if (
 				typeof existing !== "object" ||
@@ -130,10 +126,13 @@ const formatFileSize = (bytes: number): string => {
 console.log("\n🚀 Starting build process...\n");
 
 const cliConfig = parseArgs();
-const outdir = cliConfig.outdir || path.join(process.cwd(), "..", "public", "dist");
+
+// Preserved logic: Default to ../public/dist
+const outdir =
+	cliConfig.outdir || path.join(process.cwd(), "..", "public", "dist");
 
 if (existsSync(outdir)) {
-	console.log(`🗑️ Cleaning previous build at ${outdir}`);
+	console.log(`🗑️  Cleaning previous build at ${outdir}`);
 	await rm(outdir, { recursive: true, force: true });
 }
 
@@ -142,6 +141,7 @@ const start = performance.now();
 const entrypoints = [...new Bun.Glob("**.html").scanSync("src")]
 	.map((a) => path.resolve("src", a))
 	.filter((dir) => !dir.includes("node_modules"));
+
 console.log(
 	`📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`,
 );
@@ -159,12 +159,11 @@ const result = await Bun.build({
 	...cliConfig,
 });
 
-// Copy _redirects file for Cloudflare Pages SPA routing
+// Preserved logic: Copy _redirects file for Cloudflare Pages SPA routing
 const redirectsSrc = path.resolve("src", "_redirects");
 if (existsSync(redirectsSrc)) {
-	const redirectsDest = path.join(outdir, "_redirects");
-	await Bun.write(redirectsDest, Bun.file(redirectsSrc));
-	console.log("📝 Copied _redirects for Cloudflare Pages");
+	await Bun.write(path.join(outdir, "_redirects"), Bun.file(redirectsSrc));
+	console.log("📝 Copied _redirects for Cloudflare Pages\n");
 }
 
 const end = performance.now();

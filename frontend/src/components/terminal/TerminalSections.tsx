@@ -31,13 +31,28 @@ export function TerminalHeader({
 	syncHealthy,
 }: HeaderProps) {
 	return (
-		<div className="navbar bg-base-100 border-b border-base-content/10 mb-8 p-0 min-h-0 pb-4 items-start header-logo-min-height">
-			<div className="flex-1">
-				<pre className="text-[0.5rem] leading-[0.6rem] md:text-[0.6rem] md:leading-[0.7rem] font-mono text-primary whitespace-pre overflow-x-hidden">
-					{TOP_LOGO_ASCII}
+		<div className="border-b border-base-content/10 mb-2 pb-3">
+			<div className="flex items-start justify-between">
+				<pre
+					className="font-mono text-primary whitespace-pre overflow-hidden select-none"
+					style={{
+						fontSize: "clamp(4px, calc((100vw - 2rem) / 70), 9px)",
+						lineHeight: 1.2,
+					}}
+					aria-label="PolyGains"
+				>
+					{BANNER_ASCII}
 				</pre>
+				<a
+					href="https://x.com/mevtools"
+					target="_blank"
+					rel="noreferrer"
+					className="text-[10px] md:text-xs font-mono text-base-content/50 hover:text-primary transition-colors whitespace-nowrap shrink-0 pt-1 pl-2"
+				>
+					@mevtools
+				</a>
 			</div>
-			<div className="flex-none flex flex-col items-end gap-1 text-[10px] md:text-xs font-mono px-2">
+			<div className="flex items-center justify-between mt-2 text-[10px] md:text-xs font-mono">
 				<div className="text-base-content/70 whitespace-nowrap">
 					BLOCK: {currentBlock}
 				</div>

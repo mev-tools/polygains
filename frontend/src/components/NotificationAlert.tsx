@@ -4,7 +4,7 @@ export function NotificationAlert() {
 	const [expanded, setExpanded] = useState(false);
 
 	return (
-		<div className="mb-6" data-theme="alert">
+		<div className="mb-2" data-theme="alert">
 			<div
 				role="alert"
 				// CHANGES HERE:

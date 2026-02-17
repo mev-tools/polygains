@@ -10,7 +10,7 @@ import type {
 
 const DEFAULT_PAGINATION: Pagination = {
 	page: 1,
-	limit: 10,
+	limit: 6,
 	totalPages: 1,
 	total: 0,
 	hasPrev: false,

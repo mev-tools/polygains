@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
 	useTerminalDataDispatch,
 	useTerminalDataState,
@@ -21,12 +21,12 @@ import {
 } from "@/hooks/queries/useStatsQueries";
 import { SWR_REFRESH } from "@/hooks/swr/options";
 import { runBacktestStep } from "../services/backtestEngine";
-import { computeTrackerFromAlerts } from "../services/trackerEngine";
+import {
+	buildBacktestPnlSeries,
+	computeTrackerFromAlerts,
+} from "../services/trackerEngine";
 import { selectAlertsDisplay } from "../selectors/alerts";
 import { groupMarkets } from "../selectors/markets";
-
-const TYPEWRITER_TEXT =
-	"MEV.tools built this Polymarket terminal to flag potential insider-style flow: new wallets placing oversized, high-conviction bets on low-odds outcomes before repricing. Built for X traders tracking suspicious order flow in real time.";
 
 const ALERTS_PAGE_SIZE = 10;
 const MARKETS_PAGE_SIZE = 5;
@@ -49,7 +49,6 @@ export function useTerminalController() {
 	const data = useTerminalDataState();
 	const dataDispatch = useTerminalDataDispatch();
 
-	const [typewriterText, setTypewriterText] = useState("");
 	const filterSignatureRef = useRef<string>("");
 	const ingestedAlertsRef = useRef<Record<number, string>>({});
 	const ingestedMarketsRef = useRef<Record<number, string>>({});
@@ -270,25 +269,15 @@ export function useTerminalController() {
 		});
 	}, [data, ui, dataDispatch]);
 
-	useEffect(() => {
-		let index = 0;
-		setTypewriterText("");
-
-		const timer = setInterval(() => {
-			index += 1;
-			setTypewriterText(TYPEWRITER_TEXT.slice(0, index));
-			if (index >= TYPEWRITER_TEXT.length) {
-				clearInterval(timer);
-			}
-		}, 30);
-
-		return () => clearInterval(timer);
-	}, []);
-
 	// Use the grouped categories from the query - these are already filtered and sorted
 	const categoryOptions = useMemo(() => {
 		return categoriesQuery.categoryDetails;
 	}, [categoriesQuery.categoryDetails]);
+
+	// Flat (ungrouped) categories for "all" mode in the dropdown
+	const allCategoryOptions = useMemo(() => {
+		return categoriesQuery.allCategoryDetails;
+	}, [categoriesQuery.allCategoryDetails]);
 
 	const marketOutcomes = data.marketsPages[ui.marketsPage] ?? [];
 	const groupedMarkets = useMemo(
@@ -319,6 +308,9 @@ export function useTerminalController() {
 
 	const tracker =
 		data.backtest.status === "idle" ? liveTracker : data.backtest.result;
+	const introBacktestPnlSeries = useMemo(() => {
+		return buildBacktestPnlSeries(allLoadedAlerts, ui, 36);
+	}, [allLoadedAlerts, ui]);
 
 	const runBacktest = useCallback(() => {
 		const runId = Date.now();
@@ -369,13 +361,13 @@ export function useTerminalController() {
 		data.backtest.status === "waiting_more_data";
 
 	return {
-		typewriterText,
 		syncState,
 		currentBlockText,
 		alertsRows: alertsDisplay.rows,
 		alertsPagination: alertsDisplay.pagination,
 		alertsLoading: alertsPagesQuery.isLoading && data.loadedMaxAlertsPage === 0,
 		categoryOptions,
+		allCategoryOptions,
 		selectedCategory: ui.category,
 		selectedWinnerFilter: ui.winnerFilter,
 		setCategory: (value: string) => {
@@ -396,6 +388,7 @@ export function useTerminalController() {
 		marketsLoading:
 			marketsPagesQuery.isLoading && !data.marketsPages[ui.marketsPage],
 		changeMarketsPage,
+		introBacktestPnlSeries,
 		globalStats: {
 			accounts: formatNum(globalStatsQuery.stats?.total_accounts || 0),
 			markets: formatNum(globalStatsQuery.stats?.total_markets || 0),

@@ -29,7 +29,18 @@ export function TerminalPage() {
 					/>
 
 					<NotificationAlert />
-					<TerminalIntro text={vm.typewriterText} />
+					<TerminalIntro
+						totalInsiders={vm.detection.totalInsiders}
+						yesInsiders={vm.detection.yesInsiders}
+						noInsiders={vm.detection.noInsiders}
+						insiderVolume={vm.detection.insiderVolume}
+						backtestPnl={vm.tracker.realizedPnL}
+						backtestTotalBet={vm.tracker.totalBet}
+						backtestTrades={vm.tracker.liveTrades}
+						backtestWins={vm.tracker.liveWins}
+						backtestLosses={vm.tracker.liveLosses}
+						backtestSeries={vm.introBacktestPnlSeries}
+					/>
 
 					<AlertsSection
 						rows={vm.alertsRows}
@@ -37,6 +48,7 @@ export function TerminalPage() {
 						selectedCategory={vm.selectedCategory}
 						selectedWinnerFilter={vm.selectedWinnerFilter}
 						categoryOptions={vm.categoryOptions}
+						allCategoryOptions={vm.allCategoryOptions}
 						isLoading={vm.alertsLoading}
 						onPrev={() => vm.changeAlertsPage(-1)}
 						onNext={() => vm.changeAlertsPage(1)}

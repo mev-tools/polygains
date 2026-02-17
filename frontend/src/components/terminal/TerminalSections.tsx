@@ -51,17 +51,171 @@ export function TerminalHeader({
 	);
 }
 
-export function TerminalIntro({ text }: TerminalIntroProps) {
+const INTRO_STEPS = [
+	{
+		label: "STEP 1: MONITOR",
+		desc: "Scan every every market on Polymarket",
+	},
+	{
+		label: "STEP 2: DISCOVER",
+		desc: 'Detect unusual activity. New Wallets, no history and large bets',
+	},
+	{
+		label: "STEP 3: FOLLOW",
+		desc: "Get notified on new trades. Watch, copy, or reverse.",
+	},
+];
+
+export function TerminalIntro({
+	totalInsiders = 0,
+	yesInsiders = 0,
+	noInsiders = 0,
+	insiderVolume = "0.00",
+	backtestPnl = 0,
+	backtestTotalBet = 0,
+	backtestTrades = 0,
+	backtestWins = 0,
+	backtestLosses = 0,
+	backtestSeries = [],
+}: Omit<TerminalIntroProps, "text">) {
+	const safeTotal = Math.max(totalInsiders, yesInsiders + noInsiders, 1);
+	const yesShare = Math.round((yesInsiders / safeTotal) * 100);
+	const noShare = Math.round((noInsiders / safeTotal) * 100);
+	const series =
+		backtestSeries.length > 1 ? backtestSeries : [0, Number(backtestPnl || 0)];
+	const chartWidth = 520;
+	const chartHeight = 220;
+	const padX = 12;
+	const padY = 12;
+	const plotW = chartWidth - padX * 2;
+	const plotH = chartHeight - padY * 2;
+	const minY = Math.min(...series, 0);
+	const maxY = Math.max(...series, 0);
+	const rangeY = Math.max(maxY - minY, 1);
+	const stepX = series.length > 1 ? plotW / (series.length - 1) : 0;
+	const getY = (value: number) => padY + ((maxY - value) / rangeY) * plotH;
+	const zeroY = getY(0);
+	const linePoints = series
+		.map((value, index) => `${padX + index * stepX},${getY(value)}`)
+		.join(" ");
+	const areaPoints = `${padX},${zeroY} ${linePoints} ${padX + plotW},${zeroY}`;
+	const lastX = padX + (series.length - 1) * stepX;
+	const lastY = getY(series[series.length - 1] ?? 0);
+	const winRate =
+		backtestTrades > 0 ? Math.round((backtestWins / backtestTrades) * 100) : 0;
+
 	return (
-		<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-8 font-mono text-xs md:text-sm intro-container-min-height">
-			<div className="card-body p-6">
-				<h3 className="text-primary uppercase text-xs mb-2">
-					<span className="text-primary mr-2">$</span> run explain-detection
-				</h3>
-				<div className="leading-relaxed text-base-content/80">
-					{text}
-					<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
+		<div className="mb-8">
+			<div className="grid grid-cols-12 gap-4">
+				<div className="col-span-12 sm:col-span-12 md:col-span-8">
+					<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-0 font-mono text-xs md:text-sm h-full">
+						<div className="card-body p-5 md:p-6">
+							<h3 className="text-primary uppercase text-xs mb-3">
+								<span className="text-primary mr-2">$</span> RUN EXPLAIN-DETECTION
+							</h3>
+							<ul className="flex flex-col gap-4 mb-4">
+								{INTRO_STEPS.map((step, i) => (
+									<li key={step.label} className="flex flex-col sm:grid sm:grid-cols-12 sm:gap-2 leading-snug">
+										{/* Mobile: Full width header 
+                Desktop: 4/12 columns 
+            */}
+										<span className="text-primary font-bold sm:col-span-4 uppercase text-[10px] tracking-wider sm:normal-case sm:text-sm">
+											{step.label}
+										</span>
+
+										{/* Mobile: Full width description 
+                Desktop: 8/12 columns 
+            */}
+										<div className="text-base-content/70 sm:col-span-8 text-sm">
+											{step.desc}
+											{i === INTRO_STEPS.length - 1 && (
+												<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
+											)}
+										</div>
+									</li>
+								))}
+							</ul>
+							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+								<div className="rounded-box border border-base-content/10 px-3 py-2">
+									<div className="text-[10px] uppercase tracking-wider text-base-content/60">
+										Insiders
+									</div>
+									<div className="text-2xl font-semibold text-base-content leading-none mt-1">
+										{totalInsiders.toLocaleString()}
+									</div>
+									<div className="text-[11px] text-base-content/60 mt-1">
+										YES {yesShare}% / NO {noShare}%
+									</div>
+								</div>
+								<div className="rounded-box border border-base-content/10 px-3 py-2">
+									<div className="text-[10px] uppercase tracking-wider text-base-content/60">
+										Tracked volume
+									</div>
+									<div className="text-2xl font-semibold text-base-content leading-none mt-1">
+										${insiderVolume}
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
+				{/* <div className="col-span-6 sm:col-span-6">
+					<div className="card bg-base-300 shadow-xl border-l-4 border-info font-mono text-xs md:text-sm h-full">
+						<div className="card-body p-5 md:p-6">
+							<h3 className="text-info uppercase text-xs mb-3">
+								<span className="text-info mr-2">$</span> RENDER LIVE-SIGNAL-CHART
+							</h3>
+							<div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-base-content/70 mb-2">
+								<span>PNL {formatPnL(backtestPnl)}</span>
+								<span>TRADES {backtestTrades.toLocaleString()}</span>
+								<span>WIN {winRate}%</span>
+								<span>
+									W/L {backtestWins}/{backtestLosses}
+								</span>
+								<span>CAP ${backtestTotalBet.toFixed(2)}</span>
+							</div>
+							<div className="rounded-box border border-base-content/10 p-2 bg-base-200/40">
+								<svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-56 md:h-64">
+									<defs>
+										<linearGradient id="introPnlFill" x1="0" y1="0" x2="0" y2="1">
+											<stop offset="0%" stopColor="oklch(72% 0.19 149)" stopOpacity="0.28" />
+											<stop offset="100%" stopColor="oklch(72% 0.19 149)" stopOpacity="0.04" />
+										</linearGradient>
+									</defs>
+									<line
+										x1={padX}
+										y1={zeroY}
+										x2={padX + plotW}
+										y2={zeroY}
+										stroke="oklch(70% 0.01 240 / 0.35)"
+										strokeDasharray="4 5"
+										strokeWidth="1"
+									/>
+									<polyline
+										points={areaPoints}
+										fill="url(#introPnlFill)"
+										stroke="none"
+									/>
+									<polyline
+										points={linePoints}
+										fill="none"
+										stroke="oklch(72% 0.19 149)"
+										strokeWidth="2.2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+									<circle
+										cx={lastX}
+										cy={lastY}
+										r="3"
+										fill="oklch(72% 0.19 149)"
+									/>
+								</svg>
+							</div>
+						</div>
+					</div>
+				</div> */}
+
 			</div>
 		</div>
 	);
@@ -357,57 +511,82 @@ function NoAlertsAscii() {
 	);
 }
 
+const MORE_PAGE_SIZE = 8;
+
 // Main category filter with ALL, CRYPTO, SPORTS, POLITICS + "..." daisyUI dropdown
+// Supports toggling between "grouped" (merged parent categories) and "all" (every tag)
 function CategoryFilter({
 	categories,
+	allCategories,
 	selectedCategory,
 	onCategoryChange,
 }: {
 	categories: CategoryOption[];
+	allCategories?: CategoryOption[];
 	selectedCategory: string;
 	onCategoryChange: (value: string) => void;
 }) {
-	// Main categories to always show
+	const [morePage, setMorePage] = useState(0);
+	const [showAll, setShowAll] = useState(false);
+	const safeAllCategories = allCategories ?? [];
+
+	// Main categories to always show as buttons
 	const mainCategoryNames = ["ALL", "CRYPTO", "SPORTS", "POLITICS"];
 
-	// Separate main categories and "more" categories
 	const mainCategories = mainCategoryNames
 		.map((name) => categories.find((c) => c.name === name))
 		.filter(Boolean) as CategoryOption[];
 
-	const moreCategories = categories.filter(
+	// Pick the active source based on mode
+	const source = showAll ? safeAllCategories : categories;
+	const moreCategories = source.filter(
 		(c) => !mainCategoryNames.includes(c.name),
 	);
 
-	// Check if selected category is in "more" - if so, show it as the "..." label
+	// Reset page when switching mode or when list length changes
+	const clampedPage = Math.min(morePage, Math.max(0, Math.ceil((moreCategories?.length || 0) / MORE_PAGE_SIZE) - 1));
+	if (clampedPage !== morePage) setMorePage(clampedPage);
+
+	const pageCount = Math.ceil((moreCategories?.length || 0) / MORE_PAGE_SIZE);
+	const pageItems = moreCategories.slice(
+		morePage * MORE_PAGE_SIZE,
+		(morePage + 1) * MORE_PAGE_SIZE,
+	);
+
+	// Check if selected category is in "more" — show its name on the button
 	const selectedInMore = moreCategories.find((c) => c.name === selectedCategory);
 	const moreButtonLabel = selectedInMore ? selectedInMore.displayName : "...";
 	const isMoreSelected = Boolean(selectedInMore);
 
+	// Two-part layout: the main buttons scroll horizontally inside their own overflow
+	// container, while the "..." dropdown is a sibling outside it — this prevents the
+	// overflow context from clipping the dropdown-content (position:absolute).
 	return (
 		<div className="flex items-center gap-1">
-			{/* Main category buttons */}
-			{mainCategories.map((category) => (
-				<button
-					key={category.name}
-					type="button"
-					className={`btn btn-sm min-h-[40px] whitespace-nowrap ${category.name === selectedCategory
-						? "btn-primary"
-						: "btn-ghost"
-						}`}
-					onClick={() => onCategoryChange(category.name)}
-					aria-label={`Filter alerts by ${category.displayName}`}
-					aria-pressed={category.name === selectedCategory}
-					title={`${category.displayName}${category.count > 0 ? ` (${category.count} markets)` : ""}`}
-				>
-					{category.displayName}
-				</button>
-			))}
+			{/* Main category buttons in their own scrollable container */}
+			<div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+				{mainCategories.map((category) => (
+					<button
+						key={category.name}
+						type="button"
+						className={`btn btn-sm min-h-[30px] whitespace-nowrap ${category.name === selectedCategory
+							? "btn-primary"
+							: "btn-ghost"
+							}`}
+						onClick={() => onCategoryChange(category.name)}
+						aria-label={`Filter alerts by ${category.displayName}`}
+						aria-pressed={category.name === selectedCategory}
+						title={`${category.displayName}${category.count > 0 ? ` (${category.count} markets)` : ""}`}
+					>
+						{category.displayName}
+					</button>
+				))}
+			</div>
 
-			{/* "..." More button - always visible; disabled until backend categories load */}
-			<div className="dropdown dropdown-end">
+			{/* "..." dropdown - sibling to overflow div, so it is never clipped */}
+			<div className="dropdown dropdown-end shrink-0">
 				<div
-					tabIndex={moreCategories.length > 0 ? 0 : -1}
+					tabIndex={(moreCategories?.length || 0) > 0 ? 0 : -1}
 					role="button"
 					className={`btn btn-sm min-h-[40px] min-w-[40px] ${isMoreSelected ? "btn-primary" : "btn-ghost"} ${moreCategories.length === 0 ? "btn-disabled opacity-40" : ""}`}
 					aria-label="More categories"
@@ -415,9 +594,31 @@ function CategoryFilter({
 				>
 					{moreButtonLabel}
 				</div>
-				{moreCategories.length > 0 && (
-					<ul tabIndex={0} className="menu dropdown-content bg-base-200 rounded-box z-50 mt-1 w-52 p-2 shadow-xl">
-						{moreCategories.map((category) => (
+				{(moreCategories?.length || 0) > 0 && (
+					<ul tabIndex={0} className="menu dropdown-content bg-base-200 rounded-box z-50 mt-1 w-52 p-2 shadow-xl max-h-[60vh] overflow-y-auto">
+						{/* Mode toggle */}
+						<li className="mb-1">
+							<div
+								className="flex justify-between px-1 pb-1 border-b border-base-content/10"
+								onMouseDown={(e) => e.preventDefault()}
+							>
+								<button
+									type="button"
+									className={`btn btn-xs ${!showAll ? "btn-primary" : "btn-ghost"}`}
+									onClick={(e) => { e.stopPropagation(); setShowAll(false); setMorePage(0); }}
+								>
+									Grouped
+								</button>
+								<button
+									type="button"
+									className={`btn btn-xs ${showAll ? "btn-primary" : "btn-ghost"}`}
+									onClick={(e) => { e.stopPropagation(); setShowAll(true); setMorePage(0); }}
+								>
+									All ({safeAllCategories?.length || 0 - mainCategoryNames?.length || 0})
+								</button>
+							</div>
+						</li>
+						{pageItems.map((category) => (
 							<li key={category.name}>
 								<a
 									className={category.name === selectedCategory ? "active" : ""}
@@ -433,6 +634,34 @@ function CategoryFilter({
 								</a>
 							</li>
 						))}
+						{pageCount > 1 && (
+							<li className="mt-1">
+								<div
+									className="flex justify-between px-1 pt-1 border-t border-base-content/10"
+									onMouseDown={(e) => e.preventDefault()}
+								>
+									<button
+										type="button"
+										className="btn btn-xs btn-ghost"
+										disabled={morePage === 0}
+										onClick={(e) => { e.stopPropagation(); setMorePage(p => p - 1); }}
+									>
+										←
+									</button>
+									<span className="text-xs text-base-content/50 self-center">
+										{morePage + 1}/{pageCount}
+									</span>
+									<button
+										type="button"
+										className="btn btn-xs btn-ghost"
+										disabled={morePage >= pageCount - 1}
+										onClick={(e) => { e.stopPropagation(); setMorePage(p => p + 1); }}
+									>
+										→
+									</button>
+								</div>
+							</li>
+						)}
 					</ul>
 				)}
 			</div>
@@ -446,6 +675,7 @@ const AlertsSectionComponent = ({
 	selectedCategory,
 	selectedWinnerFilter,
 	categoryOptions,
+	allCategoryOptions,
 	isLoading = false,
 	onPrev,
 	onNext,
@@ -456,13 +686,14 @@ const AlertsSectionComponent = ({
 		<>
 			<div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-4 mt-8 gap-4 filter-bar-min-height">
 				<h2 className="text-xs font-bold text-base-content/70 uppercase tracking-wider section-header-min-height flex items-center shrink-0">
-					RECENT_POLYGAINS_ALERTS
+					RECENT_UNUSUAL_ALERTS
 				</h2>
 				<div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
 					{/* Category filter with main 4 + ... menu */}
-					<div className="w-full sm:w-auto overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 no-scrollbar">
+					<div className="w-full sm:w-auto">
 						<CategoryFilter
 							categories={categoryOptions}
+							allCategories={allCategoryOptions}
 							selectedCategory={selectedCategory}
 							onCategoryChange={onCategoryChange}
 						/>
@@ -669,6 +900,11 @@ export const AlertsSection = React.memo(
 			JSON.stringify(next.categoryOptions)
 		)
 			return false;
+		if (
+			JSON.stringify(prev.allCategoryOptions) !==
+			JSON.stringify(next.allCategoryOptions)
+		)
+			return false;
 		return JSON.stringify(prev.rows) === JSON.stringify(next.rows);
 	},
 );
@@ -682,7 +918,7 @@ export function DetectionSection({
 	return (
 		<>
 			<h2 className="text-xs font-bold text-base-content/80 uppercase tracking-wider mb-2 mt-4 section-header-min-height flex items-center">
-				UNUSUAL_STATS
+				UNUSUAL_TRADES_STATS
 			</h2>
 			<div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200 border border-base-content/10">
 				<div className="stat">

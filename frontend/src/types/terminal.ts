@@ -105,6 +105,16 @@ export interface HeaderProps {
 
 export interface TerminalIntroProps {
 	text: string;
+	totalInsiders?: number;
+	yesInsiders?: number;
+	noInsiders?: number;
+	insiderVolume?: string;
+	backtestPnl?: number;
+	backtestTotalBet?: number;
+	backtestTrades?: number;
+	backtestWins?: number;
+	backtestLosses?: number;
+	backtestSeries?: number[];
 }
 
 export interface LiveTrackerControlsProps {
@@ -156,6 +166,7 @@ export interface AlertsSectionProps {
 	selectedCategory: string;
 	selectedWinnerFilter: "BOTH" | "WINNERS" | "LOSERS";
 	categoryOptions: CategoryOption[];
+	allCategoryOptions: CategoryOption[];
 	isLoading?: boolean;
 	onPrev: () => void;
 	onNext: () => void;

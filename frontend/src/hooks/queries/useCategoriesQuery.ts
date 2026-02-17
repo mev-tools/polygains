@@ -91,7 +91,37 @@ function groupCategories(categories: CategoryCount[]): CategoryOption[] {
 		}
 	}
 
+	// Sort additional categories by count descending
+	additionalCategories.sort((a, b) => b.count - a.count);
+
 	return [...result, ...additionalCategories];
+}
+
+// Flat list: every individual tag as its own category, no merging
+function flattenCategories(categories: CategoryCount[]): CategoryOption[] {
+	const result: CategoryOption[] = DEFAULT_CATEGORIES.map(c => ({ ...c }));
+
+	for (const cat of categories) {
+		if (cat.name === "ALL") continue;
+
+		const upperName = cat.name.toUpperCase();
+		const defaultIndex = result.findIndex((c) => c.name === upperName);
+		if (defaultIndex >= 0) {
+			result[defaultIndex] = { ...result[defaultIndex], count: cat.count, enabled: true };
+		} else {
+			result.push({
+				name: cat.name,
+				count: cat.count,
+				enabled: true,
+				displayName: cat.displayName ?? cat.name,
+			});
+		}
+	}
+
+	// Sort non-default entries by count descending
+	const defaults = result.slice(0, DEFAULT_CATEGORIES.length);
+	const rest = result.slice(DEFAULT_CATEGORIES.length).sort((a, b) => b.count - a.count);
+	return [...defaults, ...rest];
 }
 
 export function useCategoriesQuery(options: UseCategoriesOptions = {}) {
@@ -107,12 +137,17 @@ export function useCategoriesQuery(options: UseCategoriesOptions = {}) {
 		},
 	);
 
+	const raw = query.data ?? [];
+
 	// Group and normalize categories
-	const groupedCategories = groupCategories(query.data ?? []);
+	const groupedCategories = groupCategories(raw);
+	// Flat: every individual tag, no merging
+	const allCategories = flattenCategories(raw);
 
 	return {
 		categories: groupedCategories.map((c) => c.name),
 		categoryDetails: groupedCategories,
+		allCategoryDetails: allCategories,
 		...query,
 	};
 }

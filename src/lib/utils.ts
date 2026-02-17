@@ -1,3 +1,5 @@
+import { UPSERT_CHUNK_SIZE, USDC_DENOMINATOR } from "@/lib/const";
+
 export const parseOptionalString = (
 	value: string | null,
 ): string | undefined => {
@@ -54,7 +56,6 @@ export const normalizeInt32 = (value: unknown): number | null => {
 	return value | 0;
 };
 
-
 export const chunk = <T>(items: T[], size = UPSERT_CHUNK_SIZE): T[][] => {
 	if (items.length === 0) return [];
 	const out: T[][] = [];
@@ -64,11 +65,15 @@ export const chunk = <T>(items: T[], size = UPSERT_CHUNK_SIZE): T[][] => {
 	return out;
 };
 
-const toBigInt = (value: number | bigint) =>
-	typeof value === "bigint" ? value : BigInt(value);
+export const toBigInt = (v: unknown): bigint => {
+	if (typeof v === "bigint") return v;
+	if (typeof v === "number") return BigInt(Math.floor(v));
+	if (typeof v === "string") return BigInt(v);
+	return 0n;
+};
 
-const toTokenId = (value: string | number | bigint) =>
+export const toTokenId = (value: string | number | bigint) =>
 	typeof value === "bigint" ? value.toString() : String(value);
 
-const toUsdVolume = (usdc: bigint): number =>
+export const toUsdVolume = (usdc: bigint): number =>
 	Number(usdc) / Number(USDC_DENOMINATOR);

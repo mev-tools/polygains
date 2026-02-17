@@ -34,7 +34,8 @@ module.exports = {
 			args: "src/main.ts",
 			cwd: __dirname,
 		},
-		/*
+		// Frontend dev server - runs on port 4033 and proxies API to port 4069
+		// For production, frontend is built and served from public/dist via API server or R2
 		{
 			...commonApp,
 			name: "frontend",
@@ -43,18 +44,10 @@ module.exports = {
 			cwd: path.join(__dirname, "frontend"),
 			env: {
 				FRONTEND_HOST: "127.0.0.1",
-				FRONTEND_PORT: "3001",
+				FRONTEND_PORT: "4033",
 				API_UPSTREAM_BASE_URL: "http://127.0.0.1:4069",
 			},
 		},
-		{
-			...commonApp,
-			name: "frontend-build-watcher",
-			script: "./scripts/watch-frontend-build.sh",
-			interpreter: "bash",
-			cwd: __dirname,
-		},
-		*/
 		{
 			...commonApp,
 			name: "cloudflared",

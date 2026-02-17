@@ -1,14 +1,16 @@
 import type { DecodedEvent } from "@subsquid/pipes/evm";
 import { EVENT, SIDE } from "./types";
 
-export const parseOrder = (order: DecodedEvent<{
-	readonly takerOrderHash: string;
-	readonly takerOrderMaker: string;
-	readonly makerAssetId: bigint;
-	readonly takerAssetId: bigint;
-	readonly makerAmountFilled: bigint;
-	readonly takerAmountFilled: bigint;
-}>) => {
+export const parseOrder = (
+	order: DecodedEvent<{
+		readonly takerOrderHash: string;
+		readonly takerOrderMaker: string;
+		readonly makerAssetId: bigint;
+		readonly takerAssetId: bigint;
+		readonly makerAmountFilled: bigint;
+		readonly takerAmountFilled: bigint;
+	}>,
+) => {
 	const block = order.block.number;
 	const isBuy = order.event.takerAssetId === 0n;
 	const shares = isBuy

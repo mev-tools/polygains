@@ -3,8 +3,8 @@
  * Stores cache files in tmp/cache/ directory
  */
 
-import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 const CACHE_DIR = path.resolve(process.cwd(), "tmp", "cache");
@@ -133,7 +133,7 @@ export async function clearAllCache(): Promise<number> {
 		}
 
 		let count = 0;
-		for await (const entry of Bun.file(CACHE_DIR).stream()) {
+		for await (const _entry of Bun.file(CACHE_DIR).stream()) {
 			// Note: This is a simplified clear - in production you'd use proper directory iteration
 			count++;
 		}

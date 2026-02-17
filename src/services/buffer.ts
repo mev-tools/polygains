@@ -1,7 +1,6 @@
 import { Heap } from "heap-js";
-import { FIFTEEN_MINUTES, VOLUME_THRESHOLD } from "@/lib/const";
-import type { TraderData, WindowBufferItem } from "@/lib/types";
-import type { InsiderDetector, NotInsiderDetector } from "./detector";
+import { FIFTEEN_MINUTES } from "@/lib/const";
+import type { WindowBufferItem } from "@/lib/types";
 
 // --- 1. Optimized Window Buffer ---
 export class WindowBuffer<T extends WindowBufferItem> extends Map<string, T> {
@@ -77,4 +76,3 @@ export class WindowBuffer<T extends WindowBufferItem> extends Map<string, T> {
 		return flushed;
 	}
 }
-

@@ -47,16 +47,25 @@ const parsePositiveStatOrNull = (value: unknown): number | null => {
 };
 
 const parseInt32HashLookup = (value: string): number | null => {
-	const normalized = value.trim();
+	let normalized = value.trim();
+
+	// Support "u32=1234" format if needed, but primarily handle direct numbers
+	if (normalized.startsWith("u32=")) {
+		normalized = normalized.slice(4);
+	}
+
+	// Handle signed and unsigned decimal strings
 	if (!/^-?\d+$/.test(normalized)) {
 		return null;
 	}
 
 	try {
 		const parsed = BigInt(normalized);
+		// Validate range (allow both signed int32 and unsigned uint32 ranges)
 		if (parsed < -2147483648n || parsed > 4294967295n) {
 			return null;
 		}
+		// Always return as signed 32-bit integer for DB compatibility
 		return Number(BigInt.asIntN(32, parsed));
 	} catch {
 		return null;
@@ -226,7 +235,9 @@ export async function getInsiderAlerts(
 		.select({
 			account: vInsidersEnriched.account,
 			volume: vInsidersEnriched.volume,
-			detectedAt: sql<number | null>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
+			detectedAt: sql<
+				number | null
+			>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
 			marketCount: vInsidersEnriched.marketCount,
 			outcome: vInsidersEnriched.outcome,
 			winner: vInsidersEnriched.winner,
@@ -265,7 +276,7 @@ export async function getInsiderAlerts(
 
 	const alerts = insiders.map((insider) => ({
 		price: Number((insider.alertPrice ?? insider.lastPrice) || 0),
-		user: String(insider.account),
+		user: String(insider.walletAddress || insider.account),
 		volume: Number(insider.volume || 0),
 		alert_time: insider.detectedAt ? Number(insider.detectedAt) / 1000 : 0,
 		market_count: Number(insider.marketCount || 0),
@@ -330,7 +341,9 @@ export async function getInsidersList() {
 		.select({
 			account: vInsidersEnriched.account,
 			volume: vInsidersEnriched.volume,
-			detectedAt: sql<number | null>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
+			detectedAt: sql<
+				number | null
+			>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
 			tokenId: vInsidersEnriched.tokenId,
 			conditionId: vInsidersEnriched.conditionId,
 			lastPrice: vInsidersEnriched.lastPrice,
@@ -431,8 +444,12 @@ export async function getMarkets(
 			totalTrades: sql<number>`CAST(coalesce(${vMarketSummary.totalTrades}, 0) AS DOUBLE PRECISION)`,
 			totalVol: sql<number>`CAST(coalesce(${vMarketSummary.totalVol}, 0) AS DOUBLE PRECISION)`,
 			lastPrice: sql<number>`CAST(coalesce(${vMarketSummary.lastPrice}, 0) AS DOUBLE PRECISION)`,
-			mean: sql<number | null>`CAST(${vMarketSummary.mean} AS DOUBLE PRECISION)`,
-			stdDev: sql<number | null>`CAST(${vMarketSummary.stdDev} AS DOUBLE PRECISION)`,
+			mean: sql<
+				number | null
+			>`CAST(${vMarketSummary.mean} AS DOUBLE PRECISION)`,
+			stdDev: sql<
+				number | null
+			>`CAST(${vMarketSummary.stdDev} AS DOUBLE PRECISION)`,
 			p95: sql<number | null>`CAST(${vMarketSummary.p95} AS DOUBLE PRECISION)`,
 			closed: vMarketSummary.closed,
 		})
@@ -450,8 +467,7 @@ export async function getMarkets(
 		? await db
 				.select({
 					tokenId: insiderPositions.tokenId,
-					insiderTradeCount:
-						sql<number>`CAST(coalesce(sum(${insiderPositions.tradeCount}), 0) AS DOUBLE PRECISION)`,
+					insiderTradeCount: sql<number>`CAST(coalesce(sum(${insiderPositions.tradeCount}), 0) AS DOUBLE PRECISION)`,
 				})
 				.from(insiderPositions)
 				.where(inArray(insiderPositions.tokenId, tokenIds))
@@ -505,7 +521,9 @@ export async function getMarketByCondition(conditionId: string) {
 			totalTrades: sql<number>`CAST(coalesce(${tokenStats.totalTrades}, 0) AS DOUBLE PRECISION)`,
 			totalVol: sql<number>`CAST(coalesce(${tokenStats.totalVol}, 0) AS DOUBLE PRECISION)`,
 			mean: sql<number | null>`CAST(${tokenStats.mean} AS DOUBLE PRECISION)`,
-			stdDev: sql<number | null>`CAST(${tokenStats.stdDev} AS DOUBLE PRECISION)`,
+			stdDev: sql<
+				number | null
+			>`CAST(${tokenStats.stdDev} AS DOUBLE PRECISION)`,
 			p95: sql<number | null>`CAST(${tokenStats.p95} AS DOUBLE PRECISION)`,
 		})
 		.from(vBaseTokenMarketInfo)
@@ -645,7 +663,9 @@ export async function getInsiderAlertsOptimized(
 		.select({
 			account: vInsidersEnriched.account,
 			volume: vInsidersEnriched.volume,
-			detectedAt: sql<number | null>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
+			detectedAt: sql<
+				number | null
+			>`CAST(${vInsidersEnriched.detectedAt} AS DOUBLE PRECISION)`,
 			marketCount: vInsidersEnriched.marketCount,
 			outcome: vInsidersEnriched.outcome,
 			winner: vInsidersEnriched.winner,
@@ -667,19 +687,27 @@ export async function getInsiderAlertsOptimized(
 		.orderBy(desc(vInsidersEnriched.detectedAt))
 		.limit(ALERTS_CACHE_LIMIT);
 
-	const [countResult, insiders] = await Promise.all([countPromise, alertsPromise]);
+	const [countResult, insiders] = await Promise.all([
+		countPromise,
+		alertsPromise,
+	]);
 	const total = Number(countResult[0]?.count || 0);
 
 	const conditionIds = insiders
 		.map((i) => i.conditionId)
 		.filter((id): id is string => id !== null);
 
-	let resolvedWinners: Map<string, { tokenId: string | null; winnerCount: number }> = new Map();
+	let resolvedWinners: Map<
+		string,
+		{ tokenId: string | null; winnerCount: number }
+	> = new Map();
 	if (conditionIds.length > 0) {
 		const winnerResult = await db
 			.select({
 				conditionId: marketTokens.marketConditionId,
-				winningTokenId: sql<string | null>`max(case when ${marketTokens.winner} then ${marketTokens.tokenId}::text end)`,
+				winningTokenId: sql<
+					string | null
+				>`max(case when ${marketTokens.winner} then ${marketTokens.tokenId}::text end)`,
 				winnerCount: sql<number>`sum(case when ${marketTokens.winner} then 1 else 0 end)`,
 			})
 			.from(marketTokens)
@@ -716,7 +744,7 @@ export async function getInsiderAlertsOptimized(
 
 		return {
 			price: Number((insider.alertPrice ?? insider.lastPrice) || 0),
-			user: String(insider.account),
+			user: String(insider.walletAddress || insider.account),
 			volume: Number(insider.volume || 0),
 			alert_time: insider.detectedAt ? Number(insider.detectedAt) / 1000 : 0,
 			market_count: Number(insider.marketCount || 0),
@@ -771,9 +799,17 @@ export async function getMarketsOptimized(
 	const topMarketsSubquery = db
 		.select({
 			conditionId: vMarketSummary.conditionId,
-			totalMarketVol: sql<number>`sum(coalesce(${vMarketSummary.totalVol}, 0))`.as("total_market_vol"),
-			totalMarketTrades: sql<number>`sum(coalesce(${vMarketSummary.totalTrades}, 0))`.as("total_market_trades"),
-			minCreatedAt: sql<number>`min(${vMarketSummary.createdAt})`.as("min_created_at"),
+			totalMarketVol:
+				sql<number>`sum(coalesce(${vMarketSummary.totalVol}, 0))`.as(
+					"total_market_vol",
+				),
+			totalMarketTrades:
+				sql<number>`sum(coalesce(${vMarketSummary.totalTrades}, 0))`.as(
+					"total_market_trades",
+				),
+			minCreatedAt: sql<number>`min(${vMarketSummary.createdAt})`.as(
+				"min_created_at",
+			),
 		})
 		.from(vMarketSummary)
 		.leftJoin(
@@ -837,8 +873,12 @@ export async function getMarketsOptimized(
 			totalTrades: sql<number>`CAST(coalesce(${vMarketSummary.totalTrades}, 0) AS DOUBLE PRECISION)`,
 			totalVol: sql<number>`CAST(coalesce(${vMarketSummary.totalVol}, 0) AS DOUBLE PRECISION)`,
 			lastPrice: sql<number>`CAST(coalesce(${vMarketSummary.lastPrice}, 0) AS DOUBLE PRECISION)`,
-			mean: sql<number | null>`CAST(${vMarketSummary.mean} AS DOUBLE PRECISION)`,
-			stdDev: sql<number | null>`CAST(${vMarketSummary.stdDev} AS DOUBLE PRECISION)`,
+			mean: sql<
+				number | null
+			>`CAST(${vMarketSummary.mean} AS DOUBLE PRECISION)`,
+			stdDev: sql<
+				number | null
+			>`CAST(${vMarketSummary.stdDev} AS DOUBLE PRECISION)`,
 			p95: sql<number | null>`CAST(${vMarketSummary.p95} AS DOUBLE PRECISION)`,
 			closed: vMarketSummary.closed,
 		})
@@ -857,8 +897,7 @@ export async function getMarketsOptimized(
 		? await db
 				.select({
 					tokenId: insiderPositions.tokenId,
-					insiderTradeCount:
-						sql<number>`CAST(coalesce(sum(${insiderPositions.tradeCount}), 0) AS DOUBLE PRECISION)`,
+					insiderTradeCount: sql<number>`CAST(coalesce(sum(${insiderPositions.tradeCount}), 0) AS DOUBLE PRECISION)`,
 				})
 				.from(insiderPositions)
 				.where(inArray(insiderPositions.tokenId, tokenIds))

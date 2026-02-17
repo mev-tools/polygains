@@ -1,14 +1,9 @@
+import { sleep } from "bun";
 import { sql } from "drizzle-orm";
-import {sleep} from Bun
+
 import { db } from "@/lib/db/init";
 import { markets, marketTokens, tokenMarketLookup } from "@/lib/db/schema";
-import type {
-	ClobMarket,
-	ClobResponse,
-	FlatMarket,
-} from "@/lib/types";
-
-
+import type { ClobMarket, ClobResponse, FlatMarket } from "@/lib/types";
 
 const normalizeTags = (tags: unknown): string[] => {
 	if (!Array.isArray(tags)) return [];

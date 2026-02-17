@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { VOLUME_THRESHOLD } from "@/lib/const";
-import {
-	InsiderEvaluator,
-	type TraderData,
-	WindowBuffer,
-} from "@/services/buffer";
-import { InsiderDetector, NotInsiderDetector } from "@/services/detector";
+import { type TraderData, WindowBuffer } from "@/services/buffer";
 
 describe("WindowBuffer", () => {
 	let buffer: WindowBuffer<TraderData>;
@@ -146,71 +140,5 @@ describe("WindowBuffer", () => {
 		const flushed = buffer.flush(1700000900);
 		// 1700000900 - 1700000000000 is very negative.
 		expect(Object.keys(flushed).length).toBe(0);
-	});
-});
-
-describe("InsiderEvaluator", () => {
-	let insiderDetector: InsiderDetector;
-	let notInsiderDetector: NotInsiderDetector;
-	let evaluator: InsiderEvaluator;
-
-	beforeEach(() => {
-		insiderDetector = new InsiderDetector();
-		notInsiderDetector = new NotInsiderDetector();
-		evaluator = new InsiderEvaluator(insiderDetector, notInsiderDetector);
-	});
-
-	test("should detect insider if volume threshold met", () => {
-		const flushedData: Record<string, TraderData> = {
-			t1: {
-				id: "t1",
-				tokenstats: {},
-				userStats: {
-					tradeVol: VOLUME_THRESHOLD + 1n,
-					tradeCount: 1,
-					firstSeen: 1000,
-				},
-			},
-		};
-
-		evaluator.evaluate(flushedData);
-		expect(insiderDetector.has("t1")).toBe(true);
-		expect(notInsiderDetector.has("t1")).toBe(false);
-	});
-
-	test("should detect non-insider if volume threshold NOT met", () => {
-		const flushedData: Record<string, TraderData> = {
-			t1: {
-				id: "t1",
-				tokenstats: {},
-				userStats: {
-					tradeVol: VOLUME_THRESHOLD - 1n,
-					tradeCount: 1,
-					firstSeen: 1000,
-				},
-			},
-		};
-
-		evaluator.evaluate(flushedData);
-		expect(insiderDetector.has("t1")).toBe(false);
-		expect(notInsiderDetector.has("t1")).toBe(true);
-	});
-
-	test("should skip if already known as non-insider", () => {
-		notInsiderDetector.add("t1");
-		const flushedData: Record<string, TraderData> = {
-			t1: {
-				id: "t1",
-				tokenstats: {},
-				userStats: {
-					tradeVol: VOLUME_THRESHOLD + 100n,
-					tradeCount: 1,
-					firstSeen: 1000,
-				},
-			},
-		};
-
-		evaluator.evaluate(flushedData);
-		expect(insiderDetector.has("t1")).toBe(false);
 	});
 });

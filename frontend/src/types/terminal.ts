@@ -9,6 +9,7 @@ import type {
 	MarketsResponse as SharedMarketsResponse,
 	Pagination as SharedPagination,
 } from "@shared/api";
+import type { AlertRowView } from "./api";
 
 export type Pagination = SharedPagination;
 export type AlertsResponse = SharedAlertsResponse;
@@ -85,3 +86,93 @@ export const EMPTY_PAGINATION: Pagination = {
 	hasPrev: false,
 	hasNext: false,
 };
+
+// ============================================================================
+// SECTION PROPS
+// ============================================================================
+
+export interface HeaderProps {
+	currentBlock: string;
+	syncLabel: string;
+	syncHealthy: boolean;
+}
+
+export interface TerminalIntroProps {
+	text: string;
+}
+
+export interface LiveTrackerControlsProps {
+	minPrice: number;
+	maxPrice: number;
+	onlyBetOnce: boolean;
+	betOneDollarPerTrade: boolean;
+	disabled?: boolean;
+	soundEnabled: boolean;
+	selectedStrategies: Array<"reverse_insider" | "follow_insider">;
+	selectedSides: string[];
+	onMinPriceChange: (value: number) => void;
+	onMaxPriceChange: (value: number) => void;
+	onOnlyBetOnceChange: (value: boolean) => void;
+	onBetOneDollarPerTradeChange: (value: boolean) => void;
+	onSoundToggle: (value: boolean) => void;
+	onStrategyChange: (
+		mode: "reverse_insider" | "follow_insider",
+		enabled: boolean,
+	) => void;
+	onSideToggle: (side: string, enabled: boolean) => void;
+}
+
+export interface LiveTrackerCardsProps {
+	totalBet: number;
+	openInterest: number;
+	realizedPnL: number;
+	liveTrades: number;
+	liveWins: number;
+	liveLosses: number;
+	alertsPage: number;
+	alertsTotalPages: number;
+	alertsFilledThroughPage: number;
+	backtestCanContinue: boolean;
+	backtestRunning: boolean;
+	onRunBacktest: () => void;
+}
+
+export interface AlertsSectionProps {
+	rows: AlertRowView[];
+	pagination: Pagination;
+	selectedCategory: string;
+	selectedWinnerFilter: "BOTH" | "WINNERS" | "LOSERS";
+	categoryOptions: string[];
+	isLoading?: boolean;
+	onPrev: () => void;
+	onNext: () => void;
+	onCategoryChange: (value: string) => void;
+	onWinnerFilterChange: (value: "BOTH" | "WINNERS" | "LOSERS") => void;
+}
+
+export interface DetectionSectionProps {
+	totalInsiders: number;
+	yesInsiders: number;
+	noInsiders: number;
+	insiderVolume: string;
+}
+
+export interface MarketsSectionProps {
+	markets: GroupedMarket[];
+	pagination: Pagination;
+	isLoading?: boolean;
+	marketStatsLoadingByCondition?: Record<string, boolean>;
+	onPrev: () => void;
+	onNext: () => void;
+}
+
+export interface GlobalStatsSectionProps {
+	accounts: string;
+	markets: string;
+	trades: string;
+	activePositions: string;
+}
+
+export interface BannerProps {
+	currentBlock: string;
+}

@@ -24,7 +24,7 @@ export default defineConfig({
 	/* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
 	use: {
 		/* Base URL to use in actions like `await page.goto('/')`. */
-		baseURL: process.env.FRONTEND_URL || "http://localhost:3001",
+		baseURL: process.env.FRONTEND_URL || "http://localhost:4033",
 
 		/* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
 		trace: "on-first-retry",
@@ -45,8 +45,8 @@ export default defineConfig({
 	webServer: process.env.CI
 		? undefined
 		: {
-				command: "cd frontend && PORT=3001 bun run dev",
-				url: "http://localhost:3001",
+				command: "cd frontend && FRONTEND_PORT=4033 bun run dev",
+				url: "http://localhost:4033",
 				reuseExistingServer: !process.env.CI,
 				timeout: 120 * 1000,
 			},

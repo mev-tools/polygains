@@ -1,12 +1,12 @@
 {
-	"name": "bun-react-template",
+	"name": "polygains-frontend",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"dev": "bun --hot src/index.ts",
+		"build": "bun build.ts  --outdir=./../public/dist --minify --sourcemap=linked --external=react,react-dom",
 		"start": "NODE_ENV=production bun src/index.ts",
-		"build": "bun build.ts",
 		"lint": "biome lint .",
 		"lint:fix": "biome check --write --unsafe ."
 	},

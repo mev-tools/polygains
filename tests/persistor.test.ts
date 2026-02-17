@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { BlockCursor } from "@subsquid/pipes";
-import { loadDetector, saveDetector } from "@/lib/db/bloomfilter";
+import { loadDetector } from "@/lib/db/bloomfilter";
 import { XXHash32Set } from "@/lib/hashset";
 import { BloomFilterPersistor } from "@/services/filter-persistor";
 
@@ -66,9 +66,9 @@ describe("BloomFilterPersistor Integration Tests", () => {
 
 		expect(loadedInsider).not.toBeNull();
 		expect(loadedNotInsider).not.toBeNull();
-		expect(loadedInsider?.dataSet.has(Bun.hash.xxHash32("0xinsider1") | 0)).toBe(
-			true,
-		);
+		expect(
+			loadedInsider?.dataSet.has(Bun.hash.xxHash32("0xinsider1") | 0),
+		).toBe(true);
 		expect(
 			loadedNotInsider?.dataSet.has(Bun.hash.xxHash32("0xnotinsider1") | 0),
 		).toBe(true);

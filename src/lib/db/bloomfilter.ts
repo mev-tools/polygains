@@ -2,8 +2,8 @@ import type { BlockCursor } from "@subsquid/pipes";
 import { BloomFilter } from "bloomfilter";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/init";
-import type { XXHash32Set } from "@/lib/hashset";
 import { bloomfilterSnapshots, detectorSnapshots } from "@/lib/db/schema";
+import type { XXHash32Set } from "@/lib/hashset";
 import type { BloomFilterId } from "../types";
 
 export interface BloomFilterInternals {

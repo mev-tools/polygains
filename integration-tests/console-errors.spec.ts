@@ -53,7 +53,9 @@ test.describe("Console Error Tests", () => {
 		expect(referenceErrors).toHaveLength(0);
 	});
 
-	test("should capture all console messages for debugging", async ({ page }) => {
+	test("should capture all console messages for debugging", async ({
+		page,
+	}) => {
 		const allConsoleMessages: { type: string; text: string }[] = [];
 
 		page.on("console", (msg) => {
@@ -69,6 +71,63 @@ test.describe("Console Error Tests", () => {
 
 		// Log all messages for debugging
 		console.log("Console messages:", allConsoleMessages);
+
+		// The test passes - this is for diagnostic purposes
+		expect(true).toBe(true);
+	});
+
+	test("should read console from production https://polygains.com/", async ({
+		page,
+	}) => {
+		const consoleLogs: { type: string; text: string }[] = [];
+		const consoleErrors: string[] = [];
+		const pageErrors: string[] = [];
+
+		// Capture all console messages
+		page.on("console", (msg) => {
+			const logEntry = {
+				type: msg.type(),
+				text: msg.text(),
+			};
+			consoleLogs.push(logEntry);
+
+			// Also capture errors separately
+			if (msg.type() === "error") {
+				consoleErrors.push(msg.text());
+			}
+		});
+
+		// Capture page errors
+		page.on("pageerror", (error) => {
+			pageErrors.push(error.message);
+		});
+
+		// Navigate to production site
+		await page.goto("https://polygains.com/");
+		await page.waitForLoadState("networkidle");
+		await page.waitForTimeout(3000);
+
+		// Print out all console messages
+		console.log("\n=== Console Logs from https://polygains.com/ ===");
+		if (consoleLogs.length === 0) {
+			console.log("(No console messages captured)");
+		} else {
+			consoleLogs.forEach((log, index) => {
+				console.log(`[${index + 1}] [${log.type}] ${log.text}`);
+			});
+		}
+		console.log("=== End Console Logs ===\n");
+
+		// Print errors if any
+		if (consoleErrors.length > 0) {
+			console.log("\n⚠️ Console Errors found:");
+			consoleErrors.forEach((err) => console.log(`  - ${err}`));
+		}
+
+		if (pageErrors.length > 0) {
+			console.log("\n⚠️ Page Errors found:");
+			pageErrors.forEach((err) => console.log(`  - ${err}`));
+		}
 
 		// The test passes - this is for diagnostic purposes
 		expect(true).toBe(true);

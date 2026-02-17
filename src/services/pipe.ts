@@ -4,18 +4,14 @@ import {
 	FIFTEEN_MINUTES,
 	MIN_PRICE_BPS,
 	START_BLOCK,
-	USDC_DENOMINATOR,
 	VOLUME_THRESHOLD,
 } from "@/lib/const";
 import { loadDetector } from "@/lib/db/bloomfilter";
 import { hashWallet } from "@/lib/hash";
 import { type ParsedOrder, type PositionStats, SIDE } from "@/lib/types";
+import { toBigInt, toTokenId, toUsdVolume } from "@/lib/utils";
 import { type TraderData, WindowBuffer } from "./buffer";
-import {
-	InsiderDetector,
-	NotInsiderDetector,
-	XXHash32Set,
-} from "./detector";
+import { InsiderDetector, NotInsiderDetector, XXHash32Set } from "./detector";
 import { BloomFilterPersistor } from "./filter-persistor";
 import {
 	AccountAddressMapPersistor,
@@ -23,9 +19,7 @@ import {
 	MarketStatsPersistor,
 } from "./positions-persistor";
 
-export {  type TraderData, WindowBuffer } from "./buffer";
-
-
+export { type TraderData, WindowBuffer } from "./buffer";
 
 export class PolymarketPipe {
 	private cursor?: BlockCursor;
@@ -214,6 +208,11 @@ export class PolymarketPipe {
 
 						if (this.insiderDetector.has(accountHash)) {
 							// Already detected insider -> append directly to DB.
+							this.accountAddressMapPersistor.enqueue({
+								accountHash,
+								walletAddress: trader,
+								seenAt: orderTimestamp,
+							});
 							this.insiderPositionsPersistor.enqueue({
 								accountHash,
 								detectedAt: orderTimestamp,

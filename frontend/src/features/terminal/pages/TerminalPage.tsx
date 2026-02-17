@@ -6,7 +6,9 @@ import {
 	LiveTrackerControls,
 	MarketsSection,
 	MarketsOverviewStatsPreview,
+	SimulationHeader,
 	TerminalBanner,
+	TerminalFooter,
 	TerminalHeader,
 	TerminalIntro,
 } from "../components/TerminalSections";
@@ -41,7 +43,6 @@ export function TerminalPage() {
 						backtestLosses={vm.tracker.liveLosses}
 						backtestSeries={vm.introBacktestPnlSeries}
 					/>
-
 					<AlertsSection
 						rows={vm.alertsRows}
 						pagination={vm.alertsPagination}
@@ -63,14 +64,6 @@ export function TerminalPage() {
 						insiderVolume={vm.detection.insiderVolume}
 					/>
 
-					{/* <MarketsSection
-						markets={vm.markets}
-						pagination={vm.marketsPagination}
-						isLoading={vm.marketsLoading}
-						marketStatsLoadingByCondition={vm.marketStatsLoadingByCondition}
-						onPrev={() => vm.changeMarketsPage(-1)}
-						onNext={() => vm.changeMarketsPage(1)}
-					/> */}
 					<MarketsOverviewStatsPreview
 						markets={vm.markets}
 						pagination={vm.marketsPagination}
@@ -87,13 +80,19 @@ export function TerminalPage() {
 						activePositions={vm.globalStats.activePositions}
 					/>
 
+					<div className="mt-8 mb-2">
+						<h2 className="text-xs font-bold text-base-content/70 uppercase tracking-wider font-mono">
+							LIVE_TRACKER
+						</h2>
+					</div>
+					<SimulationHeader />
+
 					<LiveTrackerControls
 						minPrice={vm.liveControls.minPrice}
 						maxPrice={vm.liveControls.maxPrice}
 						onlyBetOnce={vm.liveControls.onlyBetOnce}
 						betOneDollarPerTrade={vm.liveControls.betOneDollarPerTrade}
 						disabled={vm.liveControls.disabled}
-						soundEnabled={vm.liveControls.soundEnabled}
 						selectedStrategies={vm.liveControls.selectedStrategies}
 						selectedSides={vm.liveControls.selectedSides}
 						onMinPriceChange={vm.liveControls.onMinPriceChange}
@@ -102,7 +101,6 @@ export function TerminalPage() {
 						onBetOneDollarPerTradeChange={
 							vm.liveControls.onBetOneDollarPerTradeChange
 						}
-						onSoundToggle={vm.liveControls.onSoundToggle}
 						onStrategyChange={vm.liveControls.onStrategyChange}
 						onSideToggle={vm.liveControls.onSideToggle}
 					/>
@@ -122,7 +120,10 @@ export function TerminalPage() {
 						onRunBacktest={vm.tracker.onRunBacktest}
 					/>
 
+
+
 					<TerminalBanner currentBlock={vm.currentBlockText} />
+					<TerminalFooter />
 				</main>
 			</div>
 		</>

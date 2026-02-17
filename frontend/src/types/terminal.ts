@@ -123,14 +123,12 @@ export interface LiveTrackerControlsProps {
 	onlyBetOnce: boolean;
 	betOneDollarPerTrade: boolean;
 	disabled?: boolean;
-	soundEnabled: boolean;
 	selectedStrategies: Array<"reverse_insider" | "follow_insider">;
 	selectedSides: string[];
 	onMinPriceChange: (value: number) => void;
 	onMaxPriceChange: (value: number) => void;
 	onOnlyBetOnceChange: (value: boolean) => void;
 	onBetOneDollarPerTradeChange: (value: boolean) => void;
-	onSoundToggle: (value: boolean) => void;
 	onStrategyChange: (
 		mode: "reverse_insider" | "follow_insider",
 		enabled: boolean,

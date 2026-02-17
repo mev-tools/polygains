@@ -1,9 +1,24 @@
 import { serve } from "bun";
 import index from "./index.html";
+import { join } from "path";
 
 const API_BASE_URL =
 	process.env.BUN_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4069";
 const PORT = parseInt(process.env.FRONTEND_PORT ?? "4033", 10);
+const PUBLIC_DIR = join(import.meta.dir, "..", "public");
+
+// Serve static files from public directory
+async function serveStatic(pathname: string): Promise<Response | null> {
+	// URL decode the pathname to handle spaces and special characters
+	const decodedPath = decodeURIComponent(pathname);
+	const filePath = join(PUBLIC_DIR, decodedPath);
+	const file = Bun.file(filePath);
+	const exists = await file.exists();
+	if (exists) {
+		return new Response(file);
+	}
+	return null;
+}
 
 // Simple API proxy for local development
 async function proxyToApi(req: Request, pathname: string): Promise<Response> {
@@ -55,6 +70,13 @@ const server = serve({
 		"/market/:id": async (req) => proxyToApi(req, `/market/${req.params.id}`),
 		"/insider-trades/:id": async (req) =>
 			proxyToApi(req, `/insider-trades/${req.params.id}`),
+		// Static assets - must be before catch-all
+		"/assets/*": async (req) => {
+			const pathname = new URL(req.url).pathname;
+			const response = await serveStatic(pathname);
+			if (response) return response;
+			return new Response("Not found", { status: 404 });
+		},
 		// Catch-all LAST (Bun matches in order, not by specificity)
 		"/api/*": async (req) => {
 			const pathname = new URL(req.url).pathname.replace(/^\/api/, "");

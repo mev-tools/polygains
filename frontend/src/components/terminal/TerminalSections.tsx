@@ -21,8 +21,7 @@ import type {
 	HeaderProps,
 	LiveTrackerCardsProps,
 	LiveTrackerControlsProps,
-	MarketsSectionProps,
-	TerminalIntroProps,
+
 } from "../../types/terminal";
 
 export function TerminalHeader({
@@ -34,7 +33,7 @@ export function TerminalHeader({
 		<div className="border-b border-base-content/10 mb-2 pb-3">
 			<div className="flex items-start justify-between">
 				<pre
-					className="font-mono text-primary whitespace-pre overflow-hidden select-none"
+					className="font-mono text-primary whitespace-pre overflow-hidden select-none flex-1 min-w-0"
 					style={{
 						fontSize: "clamp(4px, calc((100vw - 2rem) / 70), 9px)",
 						lineHeight: 1.2,
@@ -66,171 +65,51 @@ export function TerminalHeader({
 	);
 }
 
-const INTRO_STEPS = [
-	{
-		label: "STEP 1: MONITOR",
-		desc: "Scan every every market on Polymarket",
-	},
-	{
-		label: "STEP 2: DISCOVER",
-		desc: 'Detect unusual activity. New Wallets, no history and large bets',
-	},
-	{
-		label: "STEP 3: FOLLOW",
-		desc: "Get notified on new trades. Watch, copy, or reverse.",
-	},
-];
 
-export function TerminalIntro({
-	totalInsiders = 0,
-	yesInsiders = 0,
-	noInsiders = 0,
-	insiderVolume = "0.00",
-	backtestPnl = 0,
-	backtestTotalBet = 0,
-	backtestTrades = 0,
-	backtestWins = 0,
-	backtestLosses = 0,
-	backtestSeries = [],
-}: Omit<TerminalIntroProps, "text">) {
-	const safeTotal = Math.max(totalInsiders, yesInsiders + noInsiders, 1);
-	const yesShare = Math.round((yesInsiders / safeTotal) * 100);
-	const noShare = Math.round((noInsiders / safeTotal) * 100);
-	const series =
-		backtestSeries.length > 1 ? backtestSeries : [0, Number(backtestPnl || 0)];
-	const chartWidth = 520;
-	const chartHeight = 220;
-	const padX = 12;
-	const padY = 12;
-	const plotW = chartWidth - padX * 2;
-	const plotH = chartHeight - padY * 2;
-	const minY = Math.min(...series, 0);
-	const maxY = Math.max(...series, 0);
-	const rangeY = Math.max(maxY - minY, 1);
-	const stepX = series.length > 1 ? plotW / (series.length - 1) : 0;
-	const getY = (value: number) => padY + ((maxY - value) / rangeY) * plotH;
-	const zeroY = getY(0);
-	const linePoints = series
-		.map((value, index) => `${padX + index * stepX},${getY(value)}`)
-		.join(" ");
-	const areaPoints = `${padX},${zeroY} ${linePoints} ${padX + plotW},${zeroY}`;
-	const lastX = padX + (series.length - 1) * stepX;
-	const lastY = getY(series[series.length - 1] ?? 0);
-	const winRate =
-		backtestTrades > 0 ? Math.round((backtestWins / backtestTrades) * 100) : 0;
 
+
+// New component: Simulation explanation header
+export function SimulationHeader() {
 	return (
-		<div className="mb-8">
-			<div className="grid grid-cols-12 gap-4">
-				<div className="col-span-12 sm:col-span-12 md:col-span-8">
-					<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-0 font-mono text-xs md:text-sm h-full">
-						<div className="card-body p-5 md:p-6">
-							<h3 className="text-primary uppercase text-xs mb-3">
-								<span className="text-primary mr-2">$</span> RUN EXPLAIN-DETECTION
-							</h3>
-							<ul className="flex flex-col gap-4 mb-4">
-								{INTRO_STEPS.map((step, i) => (
-									<li key={step.label} className="flex flex-col sm:grid sm:grid-cols-12 sm:gap-2 leading-snug">
-										{/* Mobile: Full width header 
-                Desktop: 4/12 columns 
-            */}
-										<span className="text-primary font-bold sm:col-span-4 uppercase text-[10px] tracking-wider sm:normal-case sm:text-sm">
-											{step.label}
-										</span>
-
-										{/* Mobile: Full width description 
-                Desktop: 8/12 columns 
-            */}
-										<div className="text-base-content/70 sm:col-span-8 text-sm">
-											{step.desc}
-											{i === INTRO_STEPS.length - 1 && (
-												<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
-											)}
-										</div>
-									</li>
-								))}
-							</ul>
-							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-								<div className="rounded-box border border-base-content/10 px-3 py-2">
-									<div className="text-[10px] uppercase tracking-wider text-base-content/60">
-										Insiders
-									</div>
-									<div className="text-2xl font-semibold text-base-content leading-none mt-1">
-										{totalInsiders.toLocaleString()}
-									</div>
-									<div className="text-[11px] text-base-content/60 mt-1">
-										YES {yesShare}% / NO {noShare}%
-									</div>
-								</div>
-								<div className="rounded-box border border-base-content/10 px-3 py-2">
-									<div className="text-[10px] uppercase tracking-wider text-base-content/60">
-										Tracked volume
-									</div>
-									<div className="text-2xl font-semibold text-base-content leading-none mt-1">
-										${insiderVolume}
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
+		<div className="card bg-base-300 shadow-xl border-l-4 border-primary mb-4 font-mono text-xs md:text-sm">
+			<div className="card-body p-5 md:p-6">
+				<h3 className="text-primary uppercase text-xs mb-3">
+					<span className="text-primary mr-2">$</span> RUN EXPLAIN-SIMULATION
+				</h3>
+				<div className="flex flex-col gap-3 text-base-content/80">
+					<p className="font-bold text-base-content">
+						Simulate Copytrading
+					</p>
+					<p className="text-xs opacity-70 -mt-2">
+						Set your trading parameters to test alpha.
+					</p>
+					<ul className="flex flex-col gap-2 mt-1">
+						<li className="flex items-start gap-2">
+							<span className="text-primary opacity-50 select-none">{`>`}</span>
+							<span>
+								<span className="uppercase text-[10px] tracking-wider opacity-60 mr-2">Mode:</span>
+								<span className="text-success font-bold">FOLLOW</span> (Copy trades exactly) or <span className="text-error font-bold">REVERSE</span> (Bet against the wallet).
+							</span>
+						</li>
+						<li className="flex items-start gap-2">
+							<span className="text-primary opacity-50 select-none">{`>`}</span>
+							<span>
+								<span className="uppercase text-[10px] tracking-wider opacity-60 mr-2">Sizing:</span>
+								<span className="font-bold">FIXED</span> ($10 per bet) or <span className="font-bold">PROPORTIONAL</span> (% of their size).
+							</span>
+						</li>
+						<li className="flex items-start gap-2">
+							<span className="text-primary opacity-50 select-none">{`>`}</span>
+							<span>
+								Choose your minimum price for entry.
+								<span
+									className="inline-block w-1.5 h-3 bg-accent align-middle ml-1"
+									style={{ animation: "cursor-blink 1s step-end infinite" }}
+								/>
+							</span>
+						</li>
+					</ul>
 				</div>
-				{/* <div className="col-span-6 sm:col-span-6">
-					<div className="card bg-base-300 shadow-xl border-l-4 border-info font-mono text-xs md:text-sm h-full">
-						<div className="card-body p-5 md:p-6">
-							<h3 className="text-info uppercase text-xs mb-3">
-								<span className="text-info mr-2">$</span> RENDER LIVE-SIGNAL-CHART
-							</h3>
-							<div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-base-content/70 mb-2">
-								<span>PNL {formatPnL(backtestPnl)}</span>
-								<span>TRADES {backtestTrades.toLocaleString()}</span>
-								<span>WIN {winRate}%</span>
-								<span>
-									W/L {backtestWins}/{backtestLosses}
-								</span>
-								<span>CAP ${backtestTotalBet.toFixed(2)}</span>
-							</div>
-							<div className="rounded-box border border-base-content/10 p-2 bg-base-200/40">
-								<svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-56 md:h-64">
-									<defs>
-										<linearGradient id="introPnlFill" x1="0" y1="0" x2="0" y2="1">
-											<stop offset="0%" stopColor="oklch(72% 0.19 149)" stopOpacity="0.28" />
-											<stop offset="100%" stopColor="oklch(72% 0.19 149)" stopOpacity="0.04" />
-										</linearGradient>
-									</defs>
-									<line
-										x1={padX}
-										y1={zeroY}
-										x2={padX + plotW}
-										y2={zeroY}
-										stroke="oklch(70% 0.01 240 / 0.35)"
-										strokeDasharray="4 5"
-										strokeWidth="1"
-									/>
-									<polyline
-										points={areaPoints}
-										fill="url(#introPnlFill)"
-										stroke="none"
-									/>
-									<polyline
-										points={linePoints}
-										fill="none"
-										stroke="oklch(72% 0.19 149)"
-										strokeWidth="2.2"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-									<circle
-										cx={lastX}
-										cy={lastY}
-										r="3"
-										fill="oklch(72% 0.19 149)"
-									/>
-								</svg>
-							</div>
-						</div>
-					</div>
-				</div> */}
-
 			</div>
 		</div>
 	);
@@ -242,14 +121,12 @@ export function LiveTrackerControls({
 	onlyBetOnce,
 	betOneDollarPerTrade,
 	disabled = false,
-	soundEnabled,
 	selectedStrategies,
 	selectedSides,
 	onMinPriceChange,
 	onMaxPriceChange,
 	onOnlyBetOnceChange,
 	onBetOneDollarPerTradeChange,
-	onSoundToggle,
 	onStrategyChange,
 	onSideToggle,
 }: LiveTrackerControlsProps) {
@@ -279,12 +156,9 @@ export function LiveTrackerControls({
 	};
 
 	return (
-		<div className="mb-4 mt-8">
-			<div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-4">
-				<h2 className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
-					LIVE_TRACKER
-				</h2>
-				<div className="overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0">
+		<div className="card bg-base-300 shadow-xl mb-4 font-mono text-xs md:text-sm">
+			<div className="card-body p-4">
+				<div className="overflow-x-auto pb-0">
 					<div className="flex gap-4 items-center flex-nowrap min-w-max">
 						<div className="flex gap-1 items-center">
 							<input
@@ -491,7 +365,7 @@ export function LiveTrackerCards({
 				</div>
 			</div>
 
-			<div className="stat">
+			<div className="stat relative">
 				<div className="stat-title text-base-content/70 uppercase text-xs tracking-wider font-bold">
 					Trades
 				</div>
@@ -500,6 +374,34 @@ export function LiveTrackerCards({
 					<span className="text-xs text-base-content/70 ml-2 font-normal">
 						(W:{liveWins} L:{liveLosses})
 					</span>
+				</div>
+				<div className="stat-actions absolute top-0 right-0 bottom-0 flex items-center pr-4">
+					<button
+						type="button"
+						className={`btn ${backtestRunning ? "btn-disabled" : "btn-primary"} h-full rounded-none border-t-0 border-b-0 border-r-0 border-l px-6 shadow-lg`}
+						disabled={backtestRunning}
+						onClick={onRunBacktest}
+						aria-label={
+							backtestRunning
+								? "Processing backtest"
+								: backtestCanContinue
+									? "Continue backtest"
+									: "Run backtest"
+						}
+						title={
+							backtestRunning
+								? "Processing..."
+								: backtestCanContinue
+									? "Continue Backtest"
+									: "Run Backtest"
+						}
+					>
+						{backtestRunning
+							? "Processing..."
+							: backtestCanContinue
+								? "Continue"
+								: "Run Backtest"}
+					</button>
 				</div>
 			</div>
 		</div>
@@ -1054,8 +956,53 @@ export function TerminalBanner({ currentBlock }: BannerProps) {
 						</span>
 						<span className="inline-block w-1.5 h-3 bg-accent animate-pulse-gpu align-middle ml-1" />
 					</div>
+					hi
 				</div>
 			</div>
 		</div>
+	);
+}
+
+export function TerminalFooter() {
+	return (
+		<footer className="border-t border-base-content/10 py-6 mt-8">
+			<div className="flex flex-col md:flex-row items-center justify-between gap-4">
+				<div className="flex items-center gap-4">
+					<a
+						href="https://github.com/mevtools/polygains"
+						target="_blank"
+						rel="noreferrer"
+						className="text-base-content/60 hover:text-primary transition-colors"
+						aria-label="GitHub"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="currentColor"
+							className="w-5 h-5"
+						>
+							<title>GitHub</title>
+							<path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+						</svg>
+					</a>
+					<a
+						href="https://sqd.dev"
+						target="_blank"
+						rel="noreferrer"
+						className="opacity-80 hover:opacity-100 transition-opacity"
+						aria-label="Powered by SQD Network"
+					>
+						<img
+							src="/assets/Powered by SQD Network.svg"
+							alt="Powered by SQD Network"
+							className="h-6 w-auto"
+						/>
+					</a>
+				</div>
+				<div className="text-[10px] text-base-content/40 font-mono">
+					© {new Date().getFullYear()} PolyGains
+				</div>
+			</div>
+		</footer>
 	);
 }

@@ -4,9 +4,10 @@ export {
 	GlobalStatsSection,
 	LiveTrackerCards,
 	LiveTrackerControls,
-	MarketsSection,
+	SimulationHeader,
 	TerminalBanner,
+	TerminalFooter,
 	TerminalHeader,
-	TerminalIntro,
 } from "@/components/terminal/TerminalSections";
 export { MarketsOverviewStatsPreview } from "../../../components/terminal/MarketOverviewStats";
+export { TerminalIntro } from "@/components/terminal/TerminalIntro";

@@ -49,6 +49,17 @@ export function useTerminalController() {
 	const data = useTerminalDataState();
 	const dataDispatch = useTerminalDataDispatch();
 
+	// Incrementing block counter - randomly adds 1 every second to the base block
+	const [blockOffset, setBlockOffset] = useState(0);
+	useEffect(() => {
+		const interval = setInterval(() => {
+			if (Math.random() < 0.5) {
+				setBlockOffset((prev) => prev + 1);
+			}
+		}, 1000);
+		return () => clearInterval(interval);
+	}, []);
+
 	const filterSignatureRef = useRef<string>("");
 	const ingestedAlertsRef = useRef<Record<number, string>>({});
 	const ingestedMarketsRef = useRef<Record<number, string>>({});
@@ -317,11 +328,19 @@ export function useTerminalController() {
 		dataDispatch({ type: "BACKTEST_START", payload: { runId } });
 	}, [dataDispatch]);
 
+<<<<<<< HEAD
 	const currentBlockText = String(
 		insiderStatsQuery.stats?.current_block ??
 		healthQuery.health?.current_block ??
 		"--",
 	);
+=======
+	const baseBlock =
+		insiderStatsQuery.stats?.current_block ?? healthQuery.health?.current_block;
+	const currentBlockText = baseBlock
+		? String(Number(baseBlock) + blockOffset)
+		: "--";
+>>>>>>> fde0c38 (feat: update terminal components and move assets to frontend/public)
 
 	const syncState = {
 		label: healthQuery.error ? "SYNC: ERROR" : "SYNC: ONLINE",
@@ -401,7 +420,6 @@ export function useTerminalController() {
 			onlyBetOnce: ui.onlyBetOnce,
 			betOneDollarPerTrade: ui.betSizing === "fixed_stake",
 			disabled: backtestRunning,
-			soundEnabled: ui.soundEnabled,
 			selectedStrategies: ui.strategies,
 			selectedSides: ui.sides,
 			onMinPriceChange: (value: number) => applyPriceRange(value, ui.maxPrice),
@@ -413,8 +431,6 @@ export function useTerminalController() {
 					type: "SET_BET_SIZING",
 					payload: value ? "fixed_stake" : "target_payout",
 				}),
-			onSoundToggle: (value: boolean) =>
-				uiDispatch({ type: "SET_SOUND_ENABLED", payload: value }),
 			onStrategyChange: (mode: StrategyMode, enabled: boolean) =>
 				uiDispatch({ type: "TOGGLE_STRATEGY", payload: { mode, enabled } }),
 			onSideToggle: (side: string, enabled: boolean) =>
